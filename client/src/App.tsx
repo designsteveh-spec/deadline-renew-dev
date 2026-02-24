@@ -241,7 +241,38 @@ export default function App() {
     }
   }
 
+  function sanitizeFilenameToken(value: string) {
+    return (
+      value
+        .toLowerCase()
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "reminder-sheet"
+    );
+  }
+
+  function buildReminderFilename(ext: "csv" | "txt") {
+    const uniqueSources = Array.from(new Set(items.map((i) => (i.source || "").trim()).filter(Boolean)));
+    const nonTextSources = uniqueSources.filter((s) => s.toLowerCase() !== "pasted text");
+
+    if (nonTextSources.length === 1) {
+      return `${sanitizeFilenameToken(nonTextSources[0])}-reminder-sheet.${ext}`;
+    }
+
+    if (nonTextSources.length > 1) {
+      const first = sanitizeFilenameToken(nonTextSources[0]);
+      return `${first}-plus-${nonTextSources.length - 1}-files-reminder-sheet.${ext}`;
+    }
+
+    if (uniqueSources.some((s) => s.toLowerCase() === "pasted text")) {
+      return `pasted-text-reminder-sheet.${ext}`;
+    }
+
+    return `reminder-sheet.${ext}`;
+  }
+
   function downloadCsv() {
+
     const rows = [
       ["Item", "Date", "Type", "Source Snippet", "Confidence", "Source", "Location", "Notes"],
       ...items.map((i) => [i.item, i.date || "", i.type, i.snippet, i.confidence, i.source, i.location || "", i.notes || ""])
@@ -252,19 +283,24 @@ export default function App() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "reminder-sheet.csv";
+    a.download = buildReminderFilename("csv");
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  async function copyPlaintext() {
+  function downloadTxt() {
     const lines = items.map(
       (i) =>
         `${i.item} | ${i.date || "null"} | ${i.type} | ${i.confidence} | ${i.source} | ${i.location || ""}\nSnippet: ${
           i.snippet
         }\nNotes: ${i.notes || ""}\n`
     );
-    await navigator.clipboard.writeText(lines.join("\n"));
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = buildReminderFilename("txt");
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   const sortedItems = useMemo(
@@ -446,7 +482,7 @@ export default function App() {
 
           <div className="extractSectionCta">
             <button className="btn extractSectionSubmit" onClick={onExtract} disabled={loading || !hasInput}>
-              {loading ? "Extracting..." : "Extract Deadlines"}
+              {loading ? "Extracting" : "Extract Deadlines"}
             </button>
           </div>
           {error && <p className="err">{error}</p>}
@@ -524,90 +560,91 @@ export default function App() {
             <span className="accent">Upgrade</span> when you are ready
           </h2>
           <p className="ttPricingSubtitle">
-            Everything is included in every plan. Free checks are always available and paid plans increase extraction
-            capacity.
+            One-time pass purchases unlock higher extraction capacity with no auto-renewal.
           </p>
 
           <div className="ttPricingCardsWrap">
             <div className="ttPricingGrid">
               <article className="ttPricingCard">
-                <div className="ttPricingCardHeader free ttPricingCardHeaderSwap">FREE CHECK</div>
+                <div className="ttPricingCardHeader free ttPricingCardHeaderSwap">PRO 30-DAY PASS</div>
                 <div className="ttPricingCardBody">
                   <div className="ttPricingTitleRow">
                     <img src={priceTier1} alt="" className="ttPricingIcon" />
-                    <h3 className="ttPricingTitleSwap">Daily Free Extractions</h3>
+                    <h3 className="ttPricingTitleSwap">300 Extractions Per Pass</h3>
                   </div>
-                  <p className="ttPricingTagline">For quick one-off deadline scans.</p>
+                  <p className="ttPricingTagline">For short-term contract operations.</p>
                   <p className="ttPricingDescription">
-                    Good for occasional checks before using a paid plan for higher monthly throughput.
+                    One-time purchase with a 30-day access window. Good for focused review cycles and immediate
+                    deadline cleanup.
                   </p>
                   <ul className="ttPricingFeatures">
-                    <li>3 extractions per day</li>
-                    <li>Up to 1 file per extraction</li>
-                    <li>Up to 5MB per file</li>
+                    <li>300 total extractions during pass period</li>
+                    <li>Up to 3 files per extraction</li>
+                    <li>Up to 10MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
-                    $0 <span>/ always available</span>
+                    $19 <span>one-time</span>
                   </div>
                   <button className="ttPricingBtn secondary" type="button">
-                    Start Free
+                    Buy 30-Day Pass
                   </button>
                 </div>
               </article>
 
               <article className="ttPricingCard ttPricingCardHighlight">
-                <div className="ttPricingCardHeader plus ttPricingCardHeaderSwap">PRO MONTHLY</div>
+                <div className="ttPricingCardHeader plus ttPricingCardHeaderSwap">PRO ANNUAL PASS</div>
                 <div className="ttPricingCardBody">
                   <div className="ttPricingTitleRow">
                     <img src={priceTier2} alt="" className="ttPricingIcon" />
-                    <h3 className="ttPricingTitleSwap">300 Extractions Monthly</h3>
+                    <h3 className="ttPricingTitleSwap">1500 Extractions Per Pass</h3>
                   </div>
-                  <p className="ttPricingTagline">For steady contract operations.</p>
+                  <p className="ttPricingTagline">For ongoing team workflows.</p>
                   <p className="ttPricingDescription">
-                    Built for teams extracting deadlines every week and exporting reminders into operations workflows.
+                    One-time purchase with a 365-day access window. Built for teams handling renewals throughout the
+                    year.
                   </p>
                   <ul className="ttPricingFeatures">
-                    <li>300 extractions per month</li>
+                    <li>1500 total extractions during pass period</li>
                     <li>Up to 3 files per extraction</li>
-                    <li>Up to 10MB per file</li>
+                    <li>Up to 20MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
-                    $19 <span>/ month</span>
+                    $190 <span>one-time</span>
                   </div>
                   <button className="ttPricingBtn primary" type="button">
-                    Start Pro Monthly
+                    Buy Annual Pass
                   </button>
                 </div>
               </article>
 
               <article className="ttPricingCard">
-                <div className="ttPricingCardHeader pro ttPricingCardHeaderSwap">PRO ANNUAL</div>
+                <div className="ttPricingCardHeader pro ttPricingCardHeaderSwap">PRO LIFETIME PASS</div>
                 <div className="ttPricingCardBody">
                   <div className="ttPricingTitleRow">
                     <img src={priceTier3} alt="" className="ttPricingIcon" />
-                    <h3 className="ttPricingTitleSwap">1500 Extractions Monthly</h3>
+                    <h3 className="ttPricingTitleSwap">5000 Extractions Per Year</h3>
                   </div>
-                  <p className="ttPricingTagline">For high-volume teams.</p>
+                  <p className="ttPricingTagline">One payment, long-term access.</p>
                   <p className="ttPricingDescription">
-                    Best for procurement, legal ops, and finance teams handling ongoing renewals at scale.
+                    Best for teams that want no expiration and predictable long-run access without renewals.
                   </p>
                   <ul className="ttPricingFeatures">
-                    <li>1500 extractions per month</li>
+                    <li>5000 extractions per year (resets yearly)</li>
                     <li>Up to 3 files per extraction</li>
                     <li>Up to 20MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
-                    $190 <span>/ year</span>
+                    $490 <span>one-time</span>
                   </div>
                   <button className="ttPricingBtn primary outline" type="button">
-                    Start Pro Annual
+                    Buy Lifetime Pass
                   </button>
                 </div>
               </article>
             </div>
 
             <p className="ttPricingDisclaimer">
-              Stripe checkout and access-code hooks can be enabled later with your existing Trusted-Tools billing flow.
+              All passes are one-time purchases. No auto-renewal.
             </p>
           </div>
 
@@ -618,44 +655,12 @@ export default function App() {
               <div className="ttCompareCards" aria-label="Compare plans (mobile)">
                 <div className="ttCompareCard">
                   <div className="ttCompareCardHead">
-                    <div className="ttCompareCardPlan">FREE CHECK</div>
+                    <div className="ttCompareCardPlan">PRO 30-DAY PASS</div>
                   </div>
                   <div className="ttCompareCardRows">
                     <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Monthly Extractions</div>
-                      <div className="ttCompareCardValue ttCompareAccent">3 / day</div>
-                    </div>
-                    <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Max Files / Extraction</div>
-                      <div className="ttCompareCardValue">1</div>
-                    </div>
-                    <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Max File Size</div>
-                      <div className="ttCompareCardValue">5MB</div>
-                    </div>
-                    <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Evidence Snippets + Notes</div>
-                      <div className="ttCompareCardValue ttCompareCheck">&#10003;</div>
-                    </div>
-                    <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Priority Queue</div>
-                      <div className="ttCompareCardValue ttCompareX">&times;</div>
-                    </div>
-                    <div className="ttCompareCardRow ttCompareCardRowFooter">
-                      <div className="ttCompareCardLabel">Best Fit</div>
-                      <div className="ttCompareCardValue">Quick Spot Checks</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ttCompareCard">
-                  <div className="ttCompareCardHead">
-                    <div className="ttCompareCardPlan">PRO MONTHLY</div>
-                  </div>
-                  <div className="ttCompareCardRows">
-                    <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Monthly Extractions</div>
-                      <div className="ttCompareCardValue ttCompareAccent">300 / month</div>
+                      <div className="ttCompareCardLabel">Extraction Allowance</div>
+                      <div className="ttCompareCardValue ttCompareAccent">300 / 30 days</div>
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Max Files / Extraction</div>
@@ -675,19 +680,51 @@ export default function App() {
                     </div>
                     <div className="ttCompareCardRow ttCompareCardRowFooter">
                       <div className="ttCompareCardLabel">Best Fit</div>
-                      <div className="ttCompareCardValue">Weekly Contract Ops</div>
+                      <div className="ttCompareCardValue">Short-Term Review Cycles</div>
                     </div>
                   </div>
                 </div>
 
                 <div className="ttCompareCard">
                   <div className="ttCompareCardHead">
-                    <div className="ttCompareCardPlan">PRO ANNUAL</div>
+                    <div className="ttCompareCardPlan">PRO ANNUAL PASS</div>
                   </div>
                   <div className="ttCompareCardRows">
                     <div className="ttCompareCardRow">
-                      <div className="ttCompareCardLabel">Monthly Extractions</div>
-                      <div className="ttCompareCardValue ttCompareAccent">1500 / month</div>
+                      <div className="ttCompareCardLabel">Extraction Allowance</div>
+                      <div className="ttCompareCardValue ttCompareAccent">1500 / 365 days</div>
+                    </div>
+                    <div className="ttCompareCardRow">
+                      <div className="ttCompareCardLabel">Max Files / Extraction</div>
+                      <div className="ttCompareCardValue">3</div>
+                    </div>
+                    <div className="ttCompareCardRow">
+                      <div className="ttCompareCardLabel">Max File Size</div>
+                      <div className="ttCompareCardValue">20MB</div>
+                    </div>
+                    <div className="ttCompareCardRow">
+                      <div className="ttCompareCardLabel">Evidence Snippets + Notes</div>
+                      <div className="ttCompareCardValue ttCompareCheck">&#10003;</div>
+                    </div>
+                    <div className="ttCompareCardRow">
+                      <div className="ttCompareCardLabel">Priority Queue</div>
+                      <div className="ttCompareCardValue ttCompareX">&times;</div>
+                    </div>
+                    <div className="ttCompareCardRow ttCompareCardRowFooter">
+                      <div className="ttCompareCardLabel">Best Fit</div>
+                      <div className="ttCompareCardValue">Ongoing Team Workflows</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="ttCompareCard">
+                  <div className="ttCompareCardHead">
+                    <div className="ttCompareCardPlan">PRO LIFETIME PASS</div>
+                  </div>
+                  <div className="ttCompareCardRows">
+                    <div className="ttCompareCardRow">
+                      <div className="ttCompareCardLabel">Extraction Allowance</div>
+                      <div className="ttCompareCardValue ttCompareAccent">5000 / year</div>
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Max Files / Extraction</div>
@@ -707,7 +744,7 @@ export default function App() {
                     </div>
                     <div className="ttCompareCardRow ttCompareCardRowFooter">
                       <div className="ttCompareCardLabel">Best Fit</div>
-                      <div className="ttCompareCardValue">High-Volume Teams</div>
+                      <div className="ttCompareCardValue">Long-Run Operations</div>
                     </div>
                   </div>
                 </div>
@@ -718,28 +755,28 @@ export default function App() {
                   <thead>
                     <tr>
                       <th className="ttCompareColLabel">Plans</th>
-                      <th className="ttCompareColPlan">FREE CHECK</th>
-                      <th className="ttCompareColPlan">PRO MONTHLY</th>
-                      <th className="ttCompareColPlan">PRO ANNUAL</th>
+                      <th className="ttCompareColPlan">PRO 30-DAY PASS</th>
+                      <th className="ttCompareColPlan">PRO ANNUAL PASS</th>
+                      <th className="ttCompareColPlan">PRO LIFETIME PASS</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="ttCompareRowLabel">Monthly Extractions</td>
-                      <td className="ttCompareAccent">3 / day</td>
-                      <td className="ttCompareAccent">300 / month</td>
-                      <td className="ttCompareAccent">1500 / month</td>
+                      <td className="ttCompareRowLabel">Extraction Allowance</td>
+                      <td className="ttCompareAccent">300 / 30 days</td>
+                      <td className="ttCompareAccent">1500 / 365 days</td>
+                      <td className="ttCompareAccent">5000 / year</td>
                     </tr>
                     <tr>
                       <td className="ttCompareRowLabel">Max Files / Extraction</td>
-                      <td className="ttCompareCenter">1</td>
+                      <td className="ttCompareCenter">3</td>
                       <td className="ttCompareCenter">3</td>
                       <td className="ttCompareCenter">3</td>
                     </tr>
                     <tr>
                       <td className="ttCompareRowLabel">Max File Size</td>
-                      <td className="ttCompareCenter">5MB</td>
                       <td className="ttCompareCenter">10MB</td>
+                      <td className="ttCompareCenter">20MB</td>
                       <td className="ttCompareCenter">20MB</td>
                     </tr>
                     <tr>
@@ -756,9 +793,9 @@ export default function App() {
                     </tr>
                     <tr className="ttCompareRowFooter">
                       <td className="ttCompareRowLabel">Best Fit</td>
-                      <td className="ttCompareCenter">Quick Spot Checks</td>
-                      <td className="ttCompareCenter">Weekly Contract Ops</td>
-                      <td className="ttCompareCenter">High-Volume Teams</td>
+                      <td className="ttCompareCenter">Short-Term Review Cycles</td>
+                      <td className="ttCompareCenter">Ongoing Team Workflows</td>
+                      <td className="ttCompareCenter">Long-Run Operations</td>
                     </tr>
                   </tbody>
                 </table>
@@ -789,8 +826,8 @@ export default function App() {
             <button id="download-csv-btn" onClick={downloadCsv} disabled={!items.length}>
               Download CSV
             </button>
-            <button onClick={copyPlaintext} disabled={!items.length}>
-              Copy as plaintext
+            <button onClick={downloadTxt} disabled={!items.length}>
+              Download TXT
             </button>
           </div>
         </div>

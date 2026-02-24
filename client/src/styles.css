@@ -611,11 +611,16 @@ h1 {
 
 .extractSectionSubmit {
   min-height: 40px;
-  min-width: 0;
+  min-width: 190px;
   padding: 8px 24px;
   font-size: 17px;
   font-weight: 500;
   border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .heroAnim {
@@ -717,11 +722,16 @@ button:disabled {
 
 .extractSection .extractSectionSubmit {
   min-height: 40px;
-  min-width: 0;
+  min-width: 190px;
   padding: 8px 24px;
   font-size: 17px;
   font-weight: 500;
   border-radius: 14px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .muted {

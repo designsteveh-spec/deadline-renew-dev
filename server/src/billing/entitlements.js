@@ -8,6 +8,7 @@ function periodKey(windowName, now = new Date()) {
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
   const d = String(now.getUTCDate()).padStart(2, "0");
   if (windowName === "day") return `${y}-${m}-${d}`;
+  if (windowName === "year") return `${y}`;
   return `${y}-${m}`;
 }
 

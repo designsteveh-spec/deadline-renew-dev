@@ -71,8 +71,8 @@ app.post("/api/admin/access-codes/generate", (req, res) => {
     return res.status(500).json({ error: "Server not configured (missing ACCESS_CODE_SECRET)." });
   }
   const plan = normalizePlanId(req.body?.plan);
-  if (![PLAN_IDS.PRO_MONTHLY, PLAN_IDS.PRO_ANNUAL].includes(plan)) {
-    return res.status(400).json({ error: "Only pro_monthly or pro_annual access codes can be generated." });
+  if (![PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(plan)) {
+    return res.status(400).json({ error: "Only pro_30_day, pro_annual, or pro_lifetime access codes can be generated." });
   }
   const exp = Number(req.body?.exp || defaultExpirationForPlan(plan));
   const sub = String(req.body?.sub || "");
@@ -99,7 +99,11 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe is not configured (missing STRIPE_SECRET_KEY)." });
   const plan = normalizePlanId(req.body?.plan);
   const priceId =
-    plan === PLAN_IDS.PRO_ANNUAL ? process.env.STRIPE_PRICE_PRO_ANNUAL : process.env.STRIPE_PRICE_PRO_MONTHLY;
+    plan === PLAN_IDS.PRO_LIFETIME
+      ? process.env.STRIPE_PRICE_PRO_LIFETIME
+      : plan === PLAN_IDS.PRO_ANNUAL
+        ? process.env.STRIPE_PRICE_PRO_ANNUAL
+        : process.env.STRIPE_PRICE_PRO_30_DAY;
   if (!priceId) return res.status(400).json({ error: "Missing Stripe price configuration for selected plan." });
   const fe = String(process.env.FRONTEND_ORIGIN || "http://localhost:5173").replace(/\/+$/, "");
   const successUrl = `${fe}/?paid=1&session_id={CHECKOUT_SESSION_ID}`;
@@ -138,7 +142,9 @@ app.post("/api/stripe/activate-session", async (req, res) => {
       return res.status(400).json({ error: "Checkout session is not paid." });
     }
     const metadataPlan = normalizePlanId(session.metadata?.plan);
-    const plan = [PLAN_IDS.PRO_MONTHLY, PLAN_IDS.PRO_ANNUAL].includes(metadataPlan) ? metadataPlan : PLAN_IDS.PRO_MONTHLY;
+    const plan = [PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(metadataPlan)
+      ? metadataPlan
+      : PLAN_IDS.PRO_30_DAY;
     const exp = defaultExpirationForPlan(plan);
     const code = createAccessCode({
       planId: plan,

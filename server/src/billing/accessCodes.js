@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { PLAN_IDS, normalizePlanId } from "./plans.js";
 
 const ACCESS_SECRET = process.env.ACCESS_CODE_SECRET || "";
-const ACCESS_PRO_MONTHLY_DAYS = Number(process.env.ACCESS_CODE_PRO_MONTHLY_DAYS || 30);
+const ACCESS_PRO_30_DAY_DAYS = Number(process.env.ACCESS_CODE_PRO_30_DAY_DAYS || 30);
 const ACCESS_PRO_ANNUAL_DAYS = Number(process.env.ACCESS_CODE_PRO_ANNUAL_DAYS || 365);
 
 function base64url(input) {
@@ -61,12 +61,14 @@ export function verifyAccessCode(code) {
     return { ok: false, error: "invalid_payload" };
   }
   const plan = normalizePlanId(payload?.plan);
-  if (![PLAN_IDS.PRO_MONTHLY, PLAN_IDS.PRO_ANNUAL].includes(plan)) {
+  if (![PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(plan)) {
     return { ok: false, error: "invalid_plan" };
   }
   const exp = Number(payload?.exp || 0);
-  if (!Number.isFinite(exp) || exp <= 0) return { ok: false, error: "missing_exp" };
-  if (Date.now() >= exp) return { ok: false, error: "expired" };
+  if (plan !== PLAN_IDS.PRO_LIFETIME) {
+    if (!Number.isFinite(exp) || exp <= 0) return { ok: false, error: "missing_exp" };
+    if (Date.now() >= exp) return { ok: false, error: "expired" };
+  }
   return {
     ok: true,
     plan,
@@ -80,10 +82,13 @@ export function verifyAccessCode(code) {
 export function defaultExpirationForPlan(planId) {
   const now = Date.now();
   const normalized = normalizePlanId(planId);
+  if (normalized === PLAN_IDS.PRO_LIFETIME) {
+    return 0;
+  }
   if (normalized === PLAN_IDS.PRO_ANNUAL) {
     return now + ACCESS_PRO_ANNUAL_DAYS * 24 * 60 * 60 * 1000;
   }
-  return now + ACCESS_PRO_MONTHLY_DAYS * 24 * 60 * 60 * 1000;
+  return now + ACCESS_PRO_30_DAY_DAYS * 24 * 60 * 60 * 1000;
 }
 
 export function parsePromoCodes(raw) {
@@ -94,7 +99,7 @@ export function parsePromoCodes(raw) {
     const [promo, planRaw] = pair.split(":").map((v) => String(v || "").trim());
     if (!promo || !planRaw) continue;
     const plan = normalizePlanId(planRaw);
-    if (![PLAN_IDS.PRO_MONTHLY, PLAN_IDS.PRO_ANNUAL].includes(plan)) continue;
+    if (![PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(plan)) continue;
     map.set(promo.toUpperCase(), plan);
   }
   return map;
