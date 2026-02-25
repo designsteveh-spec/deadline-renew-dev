@@ -62,6 +62,7 @@ const PAID_LARGE_PDF_MAX_BYTES = 40 * 1024 * 1024;
 const INITIAL_RESULTS_VISIBLE = 10;
 const MAX_RESULTS_VISIBLE = 150;
 type PlanId = "free" | "pro_30_day" | "pro_annual" | "pro_lifetime";
+type CheckoutPlan = Exclude<PlanId, "free">;
 type OversizedModalFile = { name: string; sizeMb: string };
 const USE_CASE_CARDS = [
   {
@@ -130,6 +131,7 @@ export default function App() {
   const [showAllResults, setShowAllResults] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [activePlan, setActivePlan] = useState<PlanId>("free");
+  const [checkoutPlanLoading, setCheckoutPlanLoading] = useState<CheckoutPlan | null>(null);
   const [oversizedFilesModal, setOversizedFilesModal] = useState<OversizedModalFile[]>([]);
   const [freeFileLimitModal, setFreeFileLimitModal] = useState(false);
   const [largeFileWaitModal, setLargeFileWaitModal] = useState(false);
@@ -185,9 +187,36 @@ export default function App() {
   const uploadLimitsLabel = isPaidPlan
     ? "Up to 3 files per extract, up to 30MB a file (PDF, DOCX, TXT)"
     : "1 file per extract, up to 20MB a file (PDF, DOCX, TXT)";
+  const uploadLimitsTooltip = isPaidPlan
+    ? undefined
+    : "Upgraded plans get up to 3 files per extract and up to 30MB per file.";
+  const deepExtractTooltip = isPaidPlan
+    ? undefined
+    : "Deep Extract processes larger, more complex\nfiles and is available on upgraded plans.";
 
   function bytesToMbLabel(bytes: number) {
     return (bytes / (1024 * 1024)).toFixed(1);
+  }
+
+  async function startCheckout(plan: CheckoutPlan) {
+    if (checkoutPlanLoading) return;
+    setError(null);
+    setCheckoutPlanLoading(plan);
+    try {
+      const res = await fetch(`${API_BASE}/api/stripe/create-checkout-session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Checkout could not be started.");
+      }
+      window.location.href = String(data.url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout could not be started.");
+      setCheckoutPlanLoading(null);
+    }
   }
 
   async function submitAccessCode() {
@@ -221,6 +250,44 @@ export default function App() {
       void submitAccessCode();
     }
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paid = (params.get("paid") || "").trim();
+    const sessionId = (params.get("session_id") || "").trim();
+    if (paid !== "1" || !sessionId) return;
+    let cancelled = false;
+    const activate = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/stripe/activate-session`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.code || !data?.plan) {
+          throw new Error(data?.error || "Could not activate your pass. Please contact support@trusted-tools.com.");
+        }
+        if (cancelled) return;
+        const nextCode = String(data.code);
+        const nextPlan = (data.plan || "free") as PlanId;
+        setAccessCode(nextCode);
+        setActivePlan(nextPlan);
+        setError(null);
+        localStorage.setItem("dr_access_code", nextCode);
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, "", cleanUrl);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Could not activate your pass. Please retry.");
+        }
+      }
+    };
+    void activate();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const stored = (localStorage.getItem("dr_access_code") || "").trim();
@@ -606,7 +673,9 @@ export default function App() {
           </div>
 
           <div className="extractSectionFiles">
-            <label className="extractSectionLabel">{uploadLimitsLabel}</label>
+            <label className="extractSectionLabel" title={uploadLimitsTooltip}>
+              {uploadLimitsLabel}
+            </label>
             <input
               ref={fileInputRef}
               className="extractSectionFileNative"
@@ -627,7 +696,7 @@ export default function App() {
               <div className="extractSectionMeta extractSectionMetaSelected">
                 Selected: {files.length ? files.map((f) => f.name).join(", ") : "No files selected"}
               </div>
-              <div className="reduceToggleWrap" aria-label="Deep extract status">
+              <div className="reduceToggleWrap" aria-label="Deep extract status" title={deepExtractTooltip}>
                 <span className="reduceToggleLabel">Deep Extract:</span>
                 <div className={`reduceToggleSwitch ${isPaidPlan ? "on" : "off"}`} aria-hidden="true">
                   <span className="reduceToggleText">{isPaidPlan ? "ON" : "OFF"}</span>
@@ -868,8 +937,13 @@ export default function App() {
                   <div className="ttPricingPrice">
                     $19 <span>one-time</span>
                   </div>
-                  <button className="ttPricingBtn secondary" type="button">
-                    Buy 30-Day Pass
+                  <button
+                    className="ttPricingBtn secondary"
+                    type="button"
+                    onClick={() => void startCheckout("pro_30_day")}
+                    disabled={checkoutPlanLoading !== null}
+                  >
+                    {checkoutPlanLoading === "pro_30_day" ? "Redirecting..." : "Buy 30-Day Pass"}
                   </button>
                 </div>
               </article>
@@ -894,8 +968,13 @@ export default function App() {
                   <div className="ttPricingPrice">
                     $190 <span>one-time</span>
                   </div>
-                  <button className="ttPricingBtn primary" type="button">
-                    Buy Annual Pass
+                  <button
+                    className="ttPricingBtn primary"
+                    type="button"
+                    onClick={() => void startCheckout("pro_annual")}
+                    disabled={checkoutPlanLoading !== null}
+                  >
+                    {checkoutPlanLoading === "pro_annual" ? "Redirecting..." : "Buy Annual Pass"}
                   </button>
                 </div>
               </article>
@@ -919,8 +998,13 @@ export default function App() {
                   <div className="ttPricingPrice">
                     $490 <span>one-time</span>
                   </div>
-                  <button className="ttPricingBtn primary outline" type="button">
-                    Buy Lifetime Pass
+                  <button
+                    className="ttPricingBtn primary outline"
+                    type="button"
+                    onClick={() => void startCheckout("pro_lifetime")}
+                    disabled={checkoutPlanLoading !== null}
+                  >
+                    {checkoutPlanLoading === "pro_lifetime" ? "Redirecting..." : "Buy Lifetime Pass"}
                   </button>
                 </div>
               </article>

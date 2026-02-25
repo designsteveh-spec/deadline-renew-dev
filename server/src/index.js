@@ -24,9 +24,40 @@ const stripe = process.env.STRIPE_SECRET_KEY
 const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || "");
 const PROMO_CODES = parsePromoCodes(process.env.PROMO_CODES || "");
 const codeBySessionId = new Map();
+const processedStripeEventIds = new Set();
 const MAX_ACCEPTED_INPUT_BYTES = 40 * 1024 * 1024;
+const EXPECTED_STRIPE_CURRENCY = String(process.env.STRIPE_CURRENCY || "usd").toLowerCase();
 
 app.use(cors());
+
+function getPriceIdForPlan(plan) {
+  if (plan === PLAN_IDS.PRO_LIFETIME) return String(process.env.STRIPE_PRICE_PRO_LIFETIME || "");
+  if (plan === PLAN_IDS.PRO_ANNUAL) return String(process.env.STRIPE_PRICE_PRO_ANNUAL || "");
+  if (plan === PLAN_IDS.PRO_30_DAY) return String(process.env.STRIPE_PRICE_PRO_30_DAY || "");
+  return "";
+}
+
+app.post("/api/stripe/webhook", express.raw({ type: "*/*" }), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).send("Stripe is not configured.");
+  }
+  const sig = req.header("stripe-signature");
+  if (!sig) {
+    return res.status(400).send("Webhook Error: Missing stripe-signature header");
+  }
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, String(process.env.STRIPE_WEBHOOK_SECRET || ""));
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err?.message || "Invalid signature"}`);
+  }
+  if (event?.id && processedStripeEventIds.has(event.id)) {
+    return res.json({ received: true, deduped: true, type: event.type });
+  }
+  if (event?.id) processedStripeEventIds.add(event.id);
+  return res.json({ received: true, type: event.type });
+});
+
 app.use(express.json({ limit: "1mb" }));
 
 const upload = multer({
@@ -99,12 +130,7 @@ app.post("/api/promo/redeem", (req, res) => {
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe is not configured (missing STRIPE_SECRET_KEY)." });
   const plan = normalizePlanId(req.body?.plan);
-  const priceId =
-    plan === PLAN_IDS.PRO_LIFETIME
-      ? process.env.STRIPE_PRICE_PRO_LIFETIME
-      : plan === PLAN_IDS.PRO_ANNUAL
-        ? process.env.STRIPE_PRICE_PRO_ANNUAL
-        : process.env.STRIPE_PRICE_PRO_30_DAY;
+  const priceId = getPriceIdForPlan(plan);
   if (!priceId) return res.status(400).json({ error: "Missing Stripe price configuration for selected plan." });
   const fe = String(process.env.FRONTEND_ORIGIN || "http://localhost:5173").replace(/\/+$/, "");
   const successUrl = `${fe}/?paid=1&session_id={CHECKOUT_SESSION_ID}`;
@@ -142,10 +168,47 @@ app.post("/api/stripe/activate-session", async (req, res) => {
     if (!session || session.payment_status !== "paid") {
       return res.status(400).json({ error: "Checkout session is not paid." });
     }
+    if (session.mode !== "payment") {
+      return res.status(400).json({ error: "Invalid checkout session mode." });
+    }
     const metadataPlan = normalizePlanId(session.metadata?.plan);
-    const plan = [PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(metadataPlan)
-      ? metadataPlan
-      : PLAN_IDS.PRO_30_DAY;
+    if (![PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME].includes(metadataPlan)) {
+      return res.status(400).json({ error: "Invalid plan metadata on checkout session." });
+    }
+    const plan = metadataPlan;
+    const expectedPriceId = getPriceIdForPlan(plan);
+    if (!expectedPriceId) {
+      return res.status(400).json({ error: "Missing Stripe price configuration for session plan." });
+    }
+    const sessionCurrency = String(session.currency || "").toLowerCase();
+    if (sessionCurrency && sessionCurrency !== EXPECTED_STRIPE_CURRENCY) {
+      return res.status(400).json({ error: "Checkout session currency mismatch." });
+    }
+    const lineItems = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 3, expand: ["data.price"] });
+    if (!lineItems?.data?.length) {
+      return res.status(400).json({ error: "No line items found for checkout session." });
+    }
+    if (lineItems.data.length !== 1) {
+      return res.status(400).json({ error: "Unexpected number of line items for checkout session." });
+    }
+    const lineItem = lineItems.data[0];
+    const lineItemPriceId = typeof lineItem.price === "string" ? lineItem.price : lineItem.price?.id;
+    if (!lineItemPriceId || lineItemPriceId !== expectedPriceId) {
+      return res.status(400).json({ error: "Checkout session price does not match selected plan." });
+    }
+    const quantity = Number(lineItem.quantity || 0);
+    if (quantity !== 1) {
+      return res.status(400).json({ error: "Unexpected checkout quantity." });
+    }
+    const lineItemAmountTotal = Number(lineItem.amount_total || 0);
+    const sessionAmountTotal = Number(session.amount_total || 0);
+    if (lineItemAmountTotal <= 0 || sessionAmountTotal <= 0 || lineItemAmountTotal !== sessionAmountTotal) {
+      return res.status(400).json({ error: "Checkout session amount mismatch." });
+    }
+    const lineItemCurrency = String(lineItem.currency || "").toLowerCase();
+    if (lineItemCurrency && lineItemCurrency !== EXPECTED_STRIPE_CURRENCY) {
+      return res.status(400).json({ error: "Checkout line item currency mismatch." });
+    }
     const exp = defaultExpirationForPlan(plan);
     const code = createAccessCode({
       planId: plan,
