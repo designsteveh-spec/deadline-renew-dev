@@ -682,6 +682,32 @@ h1 {
   transform: translateY(var(--extract-cta-y));
 }
 
+.reduceProgress {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #3f45f3;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reduceProgressSpinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(63, 69, 243, 0.2);
+  border-top-color: #3f45f3;
+  border-right-color: #3f45f3;
+  animation: reduceSpin 700ms linear infinite;
+}
+
+@keyframes reduceSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .sizeOverlay {
   position: fixed;
   inset: 0;
@@ -2325,6 +2351,14 @@ td {
   .extractSectionCta {
     margin-top: 12px;
     justify-content: flex-start;
+  }
+  .reduceProgress {
+    font-size: 13px;
+    gap: 8px;
+  }
+  .reduceProgressSpinner {
+    width: 14px;
+    height: 14px;
   }
   .logoPartial {
     display: none;
