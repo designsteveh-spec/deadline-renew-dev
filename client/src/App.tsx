@@ -138,6 +138,7 @@ export default function App() {
   const [freeFileLimitModal, setFreeFileLimitModal] = useState(false);
   const [largeFileWaitModal, setLargeFileWaitModal] = useState(false);
   const [pulseExtract, setPulseExtract] = useState(false);
+  const [showSlowExtractIndicator, setShowSlowExtractIndicator] = useState(false);
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const extractButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -358,6 +359,19 @@ export default function App() {
       setLargeFileWaitModal(false);
     }
   }, [paidLargePdfFiles.length, largeFileWaitModal]);
+
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowExtractIndicator(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setShowSlowExtractIndicator(true);
+    }, 1000);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [loading]);
 
   async function runExtract() {
     setLoading(true);
@@ -752,10 +766,14 @@ export default function App() {
               {loading ? "Extracting" : "Extract Deadlines"}
             </button>
           </div>
-          {loading && paidLargePdfFiles.length > 0 && (
+          {loading && showSlowExtractIndicator && (
             <div className="reduceProgress" role="status" aria-live="polite">
               <span className="reduceProgressSpinner" aria-hidden="true" />
-              <span>Deep Extract in progress. Large PDFs can take 1-5 minutes.</span>
+              <span>
+                {paidLargePdfFiles.length > 0
+                  ? "Deep Extract in progress. Large PDFs can take 1-5 minutes."
+                  : "Extraction in progress..."}
+              </span>
             </div>
           )}
           {error && <p className="err">{error}</p>}
