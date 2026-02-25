@@ -5,6 +5,8 @@ export const PLAN_IDS = {
   PRO_LIFETIME: "pro_lifetime"
 };
 
+export const PAID_PLAN_IDS = [PLAN_IDS.PRO_30_DAY, PLAN_IDS.PRO_ANNUAL, PLAN_IDS.PRO_LIFETIME];
+
 export const PLAN_LIMITS = {
   [PLAN_IDS.FREE]: {
     id: PLAN_IDS.FREE,
@@ -12,7 +14,7 @@ export const PLAN_LIMITS = {
     extractionLimit: 3,
     extractionWindow: "day",
     maxFilesPerRun: 1,
-    maxFileBytes: 5 * 1024 * 1024
+    maxFileBytes: 20 * 1024 * 1024
   },
   [PLAN_IDS.PRO_30_DAY]: {
     id: PLAN_IDS.PRO_30_DAY,
@@ -20,7 +22,7 @@ export const PLAN_LIMITS = {
     extractionLimit: 300,
     extractionWindow: "month",
     maxFilesPerRun: 3,
-    maxFileBytes: 10 * 1024 * 1024
+    maxFileBytes: 30 * 1024 * 1024
   },
   [PLAN_IDS.PRO_ANNUAL]: {
     id: PLAN_IDS.PRO_ANNUAL,
@@ -28,7 +30,7 @@ export const PLAN_LIMITS = {
     extractionLimit: 1500,
     extractionWindow: "year",
     maxFilesPerRun: 3,
-    maxFileBytes: 20 * 1024 * 1024
+    maxFileBytes: 30 * 1024 * 1024
   },
   [PLAN_IDS.PRO_LIFETIME]: {
     id: PLAN_IDS.PRO_LIFETIME,
@@ -36,7 +38,7 @@ export const PLAN_LIMITS = {
     extractionLimit: 5000,
     extractionWindow: "year",
     maxFilesPerRun: 3,
-    maxFileBytes: 20 * 1024 * 1024
+    maxFileBytes: 30 * 1024 * 1024
   }
 };
 

@@ -7,7 +7,7 @@ import pdfParse from "pdf-parse";
 import Stripe from "stripe";
 import { extractFromSource } from "./extractor/extract.js";
 import { attachEntitlements, enforceRunLimits } from "./billing/entitlements.js";
-import { PLAN_IDS, PLAN_LIMITS, normalizePlanId } from "./billing/plans.js";
+import { PAID_PLAN_IDS, PLAN_IDS, PLAN_LIMITS, normalizePlanId } from "./billing/plans.js";
 import {
   createAccessCode,
   defaultExpirationForPlan,
@@ -24,6 +24,8 @@ const stripe = process.env.STRIPE_SECRET_KEY
 const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || "");
 const PROMO_CODES = parsePromoCodes(process.env.PROMO_CODES || "");
 const codeBySessionId = new Map();
+const PAID_REDUCTION_TRIGGER_BYTES = 30 * 1024 * 1024;
+const PAID_REDUCTION_MAX_INPUT_BYTES = 40 * 1024 * 1024;
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -32,7 +34,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 3,
-    fileSize: 20 * 1024 * 1024
+    fileSize: PAID_REDUCTION_MAX_INPUT_BYTES
   },
   fileFilter: (_req, file, cb) => {
     const ok = [".pdf", ".docx", ".txt"].some((ext) => file.originalname.toLowerCase().endsWith(ext));
@@ -181,7 +183,10 @@ app.post("/api/extract", upload.array("files", 3), attachEntitlements, enforceRu
   for (const file of files) {
     const source = file.originalname;
     try {
-      const extracted = await extractTextFromFile(file);
+      const extraction = await extractTextFromFile(file, {
+        planId: req.entitlement?.id || PLAN_IDS.FREE
+      });
+      const extracted = extraction.text;
       if (file.originalname.toLowerCase().endsWith(".pdf") && extracted.length < 50) {
         fileReports.push({
           source,
@@ -206,7 +211,8 @@ app.post("/api/extract", upload.array("files", 3), attachEntitlements, enforceRu
       fileReports.push({
         source,
         ok: true,
-        chars: extracted.length
+        chars: extracted.length,
+        error: extraction.optimized ? "Oversized PDF reduced automatically for deterministic extraction." : undefined
       });
     } catch (error) {
       fileReports.push({
@@ -229,7 +235,7 @@ app.use((err, _req, res, _next) => {
       return res.status(400).json({ error: "Maximum 3 files allowed." });
     }
     if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ error: "Each file must be <= 20MB." });
+      return res.status(400).json({ error: "File is too large to process. Maximum accepted input is 40MB." });
     }
   }
   if (err) {
@@ -243,29 +249,38 @@ app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
 
-async function extractTextFromFile(file) {
+async function extractTextFromFile(file, { planId }) {
   const name = file.originalname.toLowerCase();
+  const isPaidPlan = PAID_PLAN_IDS.includes(planId);
   if (name.endsWith(".txt")) {
-    return file.buffer.toString("utf-8");
+    return { text: file.buffer.toString("utf-8"), optimized: false };
   }
   if (name.endsWith(".docx")) {
     const result = await mammoth.extractRawText({ buffer: file.buffer });
-    return result.value || "";
+    return { text: result.value || "", optimized: false };
   }
   if (name.endsWith(".pdf")) {
-    let pageIndex = 0;
-    const renderPage = async (pageData) => {
-      const textContent = await pageData.getTextContent();
-      const pageText = textContent.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" ");
-      const marker = `\n[[[TT_PAGE_${pageIndex + 1}]]]\n`;
-      const withBreak = `${marker}${pageText}`;
-      pageIndex += 1;
-      return withBreak;
-    };
-    const result = await pdfParse(file.buffer, { pagerender: renderPage });
-    return result.text || "";
+    if (isPaidPlan && file.size > PAID_REDUCTION_TRIGGER_BYTES && file.size <= PAID_REDUCTION_MAX_INPUT_BYTES) {
+      const text = await extractTextFromPdf(file.buffer);
+      return { text, optimized: true };
+    }
+    const text = await extractTextFromPdf(file.buffer);
+    return { text, optimized: false };
   }
   throw new Error("Unsupported file type.");
+}
+
+async function extractTextFromPdf(buffer) {
+  let pageIndex = 0;
+  const renderPage = async (pageData) => {
+    const textContent = await pageData.getTextContent();
+    const pageText = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+    const marker = `\n[[[TT_PAGE_${pageIndex + 1}]]]\n`;
+    pageIndex += 1;
+    return `${marker}${pageText}`;
+  };
+  const result = await pdfParse(buffer, { pagerender: renderPage });
+  return result.text || "";
 }

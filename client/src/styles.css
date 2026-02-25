@@ -583,6 +583,79 @@ h1 {
   line-height: 1.22;
 }
 
+.extractSectionMetaRow {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.extractSectionMetaSelected {
+  margin-top: 0;
+}
+
+.reduceToggleWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.reduceToggleLabel {
+  font-size: 36px;
+  font-size: clamp(16px, 1.05vw, 32px);
+  color: #202020;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.reduceToggleSwitch {
+  min-width: 96px;
+  height: 40px;
+  border-radius: 999px;
+  border: 3px solid #3f45f3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.reduceToggleSwitch .reduceToggleText {
+  font-size: 30px;
+  font-size: clamp(14px, 0.95vw, 26px);
+  line-height: 1;
+}
+
+.reduceToggleSwitch .reduceToggleKnob {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: block;
+}
+
+.reduceToggleSwitch.on {
+  background: #ffffff;
+  border-color: #3f45f3;
+  color: #3f45f3;
+}
+
+.reduceToggleSwitch.on .reduceToggleKnob {
+  background: #3f45f3;
+}
+
+.reduceToggleSwitch.off {
+  background: #dbdbdb;
+  border-color: #8f8f8f;
+  color: #7a7a7a;
+}
+
+.reduceToggleSwitch.off .reduceToggleKnob {
+  background: #8f8f8f;
+}
+
 .extractSectionText {
   margin-top: 25px;
   transform: translateY(var(--extract-text-y));
@@ -607,6 +680,120 @@ h1 {
   display: flex;
   justify-content: flex-end;
   transform: translateY(var(--extract-cta-y));
+}
+
+.sizeOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.28);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.sizeOverlayCard {
+  width: min(100%, 760px);
+  border: 2px solid #3f45f3;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+}
+
+.sizeOverlayHead {
+  min-height: 62px;
+  background: #3f45f3;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 12px 56px;
+}
+
+.sizeOverlayHead h3 {
+  margin: 0;
+  font-size: 42px;
+  font-size: clamp(22px, 1.45vw, 36px);
+}
+
+.sizeOverlayCloseIconBtn {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.sizeOverlayCloseIconBtn img {
+  width: 34px;
+  height: 34px;
+  display: block;
+}
+
+.sizeOverlayCloseIconBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.sizeOverlayBody {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  padding: 24px 28px 8px;
+}
+
+.sizeOverlayIconWrap img {
+  width: 52px;
+  height: 52px;
+  display: block;
+}
+
+.sizeOverlayContent {
+  color: #0f172a;
+}
+
+.sizeOverlayTitle {
+  margin: 0;
+  color: #3f45f3;
+  font-size: 36px;
+  font-size: clamp(18px, 1.1vw, 28px);
+  font-weight: 700;
+}
+
+.sizeOverlayList {
+  margin: 10px 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 32px;
+  font-size: clamp(15px, 0.95vw, 24px);
+  line-height: 1.35;
+}
+
+.sizeOverlayHint {
+  margin: 20px 0 0;
+  font-size: 33px;
+  font-size: clamp(16px, 1vw, 24px);
+  font-weight: 700;
+}
+
+.sizeOverlayCloseBtn {
+  display: block;
+  margin: 18px auto 20px;
+  min-width: 180px;
+  padding: 8px 24px;
+  border-radius: 14px;
+  border: 0;
+  background: #3f45f3;
+  color: #ffffff;
+  font-size: 34px;
+  font-size: clamp(16px, 1vw, 24px);
+  font-weight: 600;
 }
 
 .extractSectionSubmit {
@@ -734,6 +921,22 @@ button:disabled {
   white-space: nowrap;
 }
 
+.extractSectionSubmit.extractSectionSubmitPulse {
+  animation: extractButtonPulse 460ms ease-in-out 2;
+}
+
+@keyframes extractButtonPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(64, 64, 255, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(64, 64, 255, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(64, 64, 255, 0);
+  }
+}
+
 .muted {
   color: var(--text-soft);
 }
@@ -839,6 +1042,11 @@ td {
   padding: 8px;
   text-align: left;
   vertical-align: top;
+}
+
+.tableWrap th,
+.tableWrap td {
+  font-size: 14px;
 }
 
 .disclaimer {
@@ -1374,7 +1582,7 @@ td {
 }
 
 .ttPricingFeatures li::before {
-  content: "✓";
+  content: "\\2713";
   color: #1e40ff;
   font-weight: 700;
 }
@@ -1871,6 +2079,65 @@ td {
   .extractSectionFileText {
     margin-left: 14px;
   }
+  .extractSectionMetaRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .reduceToggleWrap {
+    margin-top: 4px;
+  }
+  .reduceToggleLabel {
+    font-size: 18px;
+  }
+  .reduceToggleSwitch {
+    min-width: 66px;
+    height: 30px;
+    border-width: 2px;
+    padding: 0 6px;
+  }
+  .reduceToggleSwitch .reduceToggleText {
+    font-size: 14px;
+  }
+  .reduceToggleSwitch .reduceToggleKnob {
+    width: 14px;
+    height: 14px;
+  }
+  .sizeOverlayCard {
+    width: min(100%, 520px);
+  }
+  .sizeOverlayHead {
+    min-height: 52px;
+    padding: 10px 44px;
+  }
+  .sizeOverlayCloseIconBtn {
+    right: 10px;
+  }
+  .sizeOverlayCloseIconBtn img {
+    width: 26px;
+    height: 26px;
+  }
+  .sizeOverlayBody {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 16px 16px 8px;
+  }
+  .sizeOverlayIconWrap img {
+    width: 40px;
+    height: 40px;
+  }
+  .sizeOverlayTitle {
+    font-size: 20px;
+  }
+  .sizeOverlayList,
+  .sizeOverlayHint {
+    font-size: 14px;
+  }
+  .sizeOverlayCloseBtn {
+    min-width: 120px;
+    font-size: 14px;
+    margin: 14px auto 16px;
+  }
   .extractSectionTextarea {
     min-height: 250px;
     border-width: 2px;
@@ -2079,6 +2346,7 @@ td {
     height: 160px;
   }
 }
+
 
 
 

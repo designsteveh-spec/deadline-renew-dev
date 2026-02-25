@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import logoFull from "./assets/icons/extractor-logo-full-svg.svg";
 import logoPartial from "./assets/icons/extractor-logo-partial-svg.svg";
 import logoSmall from "./assets/icons/extractor-logo-small-svg.svg";
@@ -24,11 +24,14 @@ import exportReadyIcon from "./assets/icons/exportReady.svg";
 import priceTier1 from "./assets/icons/PriceTier1.svg";
 import priceTier2 from "./assets/icons/PriceTier2.svg";
 import priceTier3 from "./assets/icons/PriceTier3.svg";
+import closeOverlay from "./assets/icons/closeOverlay.svg";
+import fileTooBig from "./assets/icons/file-too-big.svg";
 import MailerLiteForm from "./MailerLiteForm";
 
 type ExtractedItem = {
   id: string;
   type: "renewal" | "notice" | "payment" | "term_end" | "trial_end" | "other";
+  priority?: "high" | "medium" | "low";
   date: string | null;
   confidence: "high" | "medium" | "low";
   item: string;
@@ -51,9 +54,12 @@ type ApiResponse = {
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
-const CLIENT_MAX_BYTES = 20 * 1024 * 1024;
+const FREE_FILE_MAX_BYTES = 20 * 1024 * 1024;
+const PAID_FILE_MAX_BYTES = 30 * 1024 * 1024;
 const INITIAL_RESULTS_VISIBLE = 10;
 const MAX_RESULTS_VISIBLE = 150;
+type PlanId = "free" | "pro_30_day" | "pro_annual" | "pro_lifetime";
+type OversizedModalFile = { name: string; sizeMb: string };
 const USE_CASE_CARDS = [
   {
     id: "consulting",
@@ -120,9 +126,17 @@ export default function App() {
   });
   const [showAllResults, setShowAllResults] = useState(false);
   const [accessCode, setAccessCode] = useState("");
+  const [activePlan, setActivePlan] = useState<PlanId>("free");
+  const [oversizedFilesModal, setOversizedFilesModal] = useState<OversizedModalFile[]>([]);
+  const [pulseExtract, setPulseExtract] = useState(false);
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const extractButtonRef = useRef<HTMLButtonElement | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
+  const pulseTimeoutRef = useRef<number | null>(null);
+
+  const isPaidPlan = activePlan !== "free";
+  const maxFileBytes = isPaidPlan ? PAID_FILE_MAX_BYTES : FREE_FILE_MAX_BYTES;
 
   useEffect(() => {
     function onResize() {
@@ -155,8 +169,12 @@ export default function App() {
   }, [menuOpen]);
 
   const tooManyFiles = files.length > 3;
-  const oversized = files.some((f) => f.size > CLIENT_MAX_BYTES);
+  const oversized = !isPaidPlan && files.some((f) => f.size > maxFileBytes);
   const hasInput = files.length > 0 || !!text.trim();
+
+  function bytesToMbLabel(bytes: number) {
+    return (bytes / (1024 * 1024)).toFixed(1);
+  }
 
   async function submitAccessCode() {
     const code = accessCode.trim();
@@ -170,13 +188,16 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) {
         setError(data?.error || "Invalid or expired access code.");
+        setActivePlan("free");
         return;
       }
       setError(null);
+      setActivePlan((data?.plan || "free") as PlanId);
       localStorage.setItem("dr_access_code", code);
       setMenuOpen(false);
     } catch {
       setError("Network error while validating access code.");
+      setActivePlan("free");
     }
   }
 
@@ -189,8 +210,48 @@ export default function App() {
 
   useEffect(() => {
     const stored = (localStorage.getItem("dr_access_code") || "").trim();
-    if (stored) setAccessCode(stored);
+    if (!stored) return;
+    setAccessCode(stored);
+    let cancelled = false;
+    const verifyStoredCode = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/access-codes/verify`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: stored })
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setActivePlan((data?.plan || "free") as PlanId);
+          return;
+        }
+      } catch {
+        // no-op; keep free defaults
+      }
+      if (!cancelled) {
+        setActivePlan("free");
+      }
+    };
+    void verifyStoredCode();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(
+    () => () => {
+      if (pulseTimeoutRef.current !== null) {
+        window.clearTimeout(pulseTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (isPaidPlan && oversizedFilesModal.length) {
+      setOversizedFilesModal([]);
+    }
+  }, [isPaidPlan, oversizedFilesModal.length]);
 
   async function onExtract() {
     setError(null);
@@ -203,7 +264,8 @@ export default function App() {
       return;
     }
     if (oversized) {
-      setError("Each file must be 20MB or smaller.");
+      const mb = Math.floor(maxFileBytes / (1024 * 1024));
+      setError(`Each file must be ${mb}MB or smaller for your current plan.`);
       return;
     }
     setLoading(true);
@@ -215,7 +277,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/extract`, {
         method: "POST",
         headers: {
-          "x-plan": "free",
+          "x-plan": activePlan,
           ...(accessCode.trim() ? { "x-access-code": accessCode.trim() } : {})
         },
         body: fd
@@ -239,6 +301,35 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function onFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files || []);
+    setFiles(selected);
+    setOversizedFilesModal([]);
+    if (!isPaidPlan) {
+      const oversizedForFree = selected
+        .filter((file) => file.size > FREE_FILE_MAX_BYTES)
+        .map((file) => ({ name: file.name, sizeMb: bytesToMbLabel(file.size) }));
+      if (oversizedForFree.length) {
+        setOversizedFilesModal(oversizedForFree);
+      }
+    }
+    if (!selected.length) return;
+    requestAnimationFrame(() => {
+      extractButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setPulseExtract(false);
+    if (pulseTimeoutRef.current !== null) {
+      window.clearTimeout(pulseTimeoutRef.current);
+    }
+    window.setTimeout(() => {
+      setPulseExtract(true);
+      pulseTimeoutRef.current = window.setTimeout(() => {
+        setPulseExtract(false);
+        pulseTimeoutRef.current = null;
+      }, 980);
+    }, 260);
   }
 
   function sanitizeFilenameToken(value: string) {
@@ -274,8 +365,18 @@ export default function App() {
   function downloadCsv() {
 
     const rows = [
-      ["Item", "Date", "Type", "Source Snippet", "Confidence", "Source", "Location", "Notes"],
-      ...items.map((i) => [i.item, i.date || "", i.type, i.snippet, i.confidence, i.source, i.location || "", i.notes || ""])
+      ["Item", "Priority", "Date", "Type", "Source Snippet", "Confidence", "Source", "Location", "Notes"],
+      ...items.map((i) => [
+        i.item,
+        i.priority || "low",
+        i.date || "",
+        i.type,
+        i.snippet,
+        i.confidence,
+        i.source,
+        i.location || "",
+        i.notes || ""
+      ])
     ];
     const csv = rows
       .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
@@ -291,7 +392,9 @@ export default function App() {
   function downloadTxt() {
     const lines = items.map(
       (i) =>
-        `${i.item} | ${i.date || "null"} | ${i.type} | ${i.confidence} | ${i.source} | ${i.location || ""}\nSnippet: ${
+        `${i.item} | ${i.priority || "low"} | ${i.date || "null"} | ${i.type} | ${i.confidence} | ${i.source} | ${
+          i.location || ""
+        }\nSnippet: ${
           i.snippet
         }\nNotes: ${i.notes || ""}\n`
     );
@@ -306,6 +409,13 @@ export default function App() {
   const sortedItems = useMemo(
     () =>
       [...items].sort((a, b) => {
+        const scorePriority = (value?: "high" | "medium" | "low") => {
+          if (value === "high") return 3;
+          if (value === "medium") return 2;
+          return 1;
+        };
+        const p = scorePriority(b.priority) - scorePriority(a.priority);
+        if (p !== 0) return p;
         if (!a.date && !b.date) return 0;
         if (!a.date) return 1;
         if (!b.date) return -1;
@@ -444,14 +554,14 @@ export default function App() {
           </div>
 
           <div className="extractSectionFiles">
-            <label className="extractSectionLabel">Upload files (PDF, DOCX, TXT | up to 3 files | 20MB max each)</label>
+            <label className="extractSectionLabel">Upload files (PDF, DOCX, TXT | up to 3 files | 20MB free, 30MB paid)</label>
             <input
               ref={fileInputRef}
               className="extractSectionFileNative"
               type="file"
               multiple
               accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+              onChange={onFilesSelected}
             />
             <div className="extractSectionFileBar">
               <button type="button" className="extractSectionChoose" onClick={() => fileInputRef.current?.click()}>
@@ -461,8 +571,17 @@ export default function App() {
                 {files.length ? files.map((f) => f.name).join(", ") : "No file chosen . . ."}
               </span>
             </div>
-            <div className="extractSectionMeta">
-              Selected: {files.length ? files.map((f) => f.name).join(", ") : "No files selected"}
+            <div className="extractSectionMetaRow">
+              <div className="extractSectionMeta extractSectionMetaSelected">
+                Selected: {files.length ? files.map((f) => f.name).join(", ") : "No files selected"}
+              </div>
+              <div className="reduceToggleWrap" aria-label="Reduce file size status">
+                <span className="reduceToggleLabel">Reduce File Size:</span>
+                <div className={`reduceToggleSwitch ${isPaidPlan ? "on" : "off"}`} aria-hidden="true">
+                  <span className="reduceToggleText">{isPaidPlan ? "ON" : "OFF"}</span>
+                  <span className="reduceToggleKnob" />
+                </div>
+              </div>
             </div>
             <div className="extractSectionMeta">
               After uploading file(s), click Extract Deadlines below. Limits are enforced by plan.
@@ -481,12 +600,54 @@ export default function App() {
           </div>
 
           <div className="extractSectionCta">
-            <button className="btn extractSectionSubmit" onClick={onExtract} disabled={loading || !hasInput}>
+            <button
+              ref={extractButtonRef}
+              className={`btn extractSectionSubmit${pulseExtract ? " extractSectionSubmitPulse" : ""}`}
+              onClick={onExtract}
+              disabled={loading || !hasInput}
+            >
               {loading ? "Extracting" : "Extract Deadlines"}
             </button>
           </div>
           {error && <p className="err">{error}</p>}
         </section>
+
+        {!!oversizedFilesModal.length && (
+          <div className="sizeOverlay" role="dialog" aria-modal="true" aria-labelledby="size-overlay-title">
+            <div className="sizeOverlayCard">
+              <div className="sizeOverlayHead">
+                <h3 id="size-overlay-title">File Size Exceeded</h3>
+                <button
+                  type="button"
+                  className="sizeOverlayCloseIconBtn"
+                  aria-label="Close"
+                  onClick={() => setOversizedFilesModal([])}
+                >
+                  <img src={closeOverlay} alt="" />
+                </button>
+              </div>
+              <div className="sizeOverlayBody">
+                <div className="sizeOverlayIconWrap">
+                  <img src={fileTooBig} alt="" />
+                </div>
+                <div className="sizeOverlayContent">
+                  <p className="sizeOverlayTitle">Files Must Be 20MB or Less.</p>
+                  <ul className="sizeOverlayList">
+                    {oversizedFilesModal.map((file) => (
+                      <li key={`${file.name}-${file.sizeMb}`}>
+                        {file.name} = {file.sizeMb}MB
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="sizeOverlayHint">Upgrade to unlock automatic file reduction for oversized PDFs.</p>
+                </div>
+              </div>
+              <button type="button" className="sizeOverlayCloseBtn" onClick={() => setOversizedFilesModal([])}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
       <section className="card">
         <h2 className="valueSectionTitle">Why teams choose this over chat tools</h2>
@@ -580,7 +741,7 @@ export default function App() {
                   <ul className="ttPricingFeatures">
                     <li>300 total extractions during pass period</li>
                     <li>Up to 3 files per extraction</li>
-                    <li>Up to 10MB per file</li>
+                    <li>Up to 30MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
                     $19 <span>one-time</span>
@@ -606,7 +767,7 @@ export default function App() {
                   <ul className="ttPricingFeatures">
                     <li>1500 total extractions during pass period</li>
                     <li>Up to 3 files per extraction</li>
-                    <li>Up to 20MB per file</li>
+                    <li>Up to 30MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
                     $190 <span>one-time</span>
@@ -631,7 +792,7 @@ export default function App() {
                   <ul className="ttPricingFeatures">
                     <li>5000 extractions per year (resets yearly)</li>
                     <li>Up to 3 files per extraction</li>
-                    <li>Up to 20MB per file</li>
+                    <li>Up to 30MB per file</li>
                   </ul>
                   <div className="ttPricingPrice">
                     $490 <span>one-time</span>
@@ -668,7 +829,7 @@ export default function App() {
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Max File Size</div>
-                      <div className="ttCompareCardValue">10MB</div>
+                      <div className="ttCompareCardValue">30MB</div>
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Evidence Snippets + Notes</div>
@@ -700,7 +861,7 @@ export default function App() {
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Max File Size</div>
-                      <div className="ttCompareCardValue">20MB</div>
+                      <div className="ttCompareCardValue">30MB</div>
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Evidence Snippets + Notes</div>
@@ -732,7 +893,7 @@ export default function App() {
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Max File Size</div>
-                      <div className="ttCompareCardValue">20MB</div>
+                      <div className="ttCompareCardValue">30MB</div>
                     </div>
                     <div className="ttCompareCardRow">
                       <div className="ttCompareCardLabel">Evidence Snippets + Notes</div>
@@ -775,9 +936,9 @@ export default function App() {
                     </tr>
                     <tr>
                       <td className="ttCompareRowLabel">Max File Size</td>
-                      <td className="ttCompareCenter">10MB</td>
-                      <td className="ttCompareCenter">20MB</td>
-                      <td className="ttCompareCenter">20MB</td>
+                      <td className="ttCompareCenter">30MB</td>
+                      <td className="ttCompareCenter">30MB</td>
+                      <td className="ttCompareCenter">30MB</td>
                     </tr>
                     <tr>
                       <td className="ttCompareRowLabel">Evidence Snippets + Notes</td>
@@ -836,6 +997,7 @@ export default function App() {
             <thead>
               <tr>
                 <th>Item</th>
+                <th>Priority</th>
                 <th>Date</th>
                 <th>Type</th>
                 <th>Source Snippet</th>
@@ -848,7 +1010,7 @@ export default function App() {
             <tbody>
               {!sortedItems.length && (
                 <tr>
-                  <td colSpan={8} className="muted">
+                  <td colSpan={9} className="muted">
                     No results yet.
                   </td>
                 </tr>
@@ -856,6 +1018,7 @@ export default function App() {
               {cappedResults.map((i) => (
                 <tr key={i.id}>
                   <td>{i.item}</td>
+                  <td>{i.priority || "low"}</td>
                   <td>{i.date || "null"}</td>
                   <td>{i.type}</td>
                   <td>{i.snippet}</td>
@@ -1051,11 +1214,12 @@ export default function App() {
             <a href="#privacy">Privacy Policy</a>
           </div>
         </div>
-        <div className="footerBottom">Â© 2026 Deadline & Renewal Extractor</div>
+        <div className="footerBottom">(c) 2026 Deadline & Renewal Extractor</div>
       </footer>
     </>
   );
 }
+
 
 
 

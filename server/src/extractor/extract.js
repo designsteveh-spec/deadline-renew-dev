@@ -129,6 +129,11 @@ const ANCHOR_KEYWORDS = {
 };
 
 const STRONG_OBLIGATION_TERMS = ["must", "shall", "required", "no later than", "prior to", "within", "due", "at least"];
+const PRIORITY_SCORE = {
+  high: 3,
+  medium: 2,
+  low: 1
+};
 
 function normalizeSnippet(text) {
   return String(text || "")
@@ -582,6 +587,84 @@ function rankAndFilter(items, lockedKeys) {
   return sorted.slice(0, 240);
 }
 
+function priorityRank(value) {
+  return PRIORITY_SCORE[value] || PRIORITY_SCORE.low;
+}
+
+function looksLikeHighPriorityClause(item) {
+  if (!item.date) return false;
+  const text = `${item.snippet || ""} ${item.notes || ""}`.toLowerCase();
+  const renewalCritical =
+    /auto[- ]?renew|renewal term|notice of non[- ]?renewal|non[- ]?renewal|successive one/.test(text) &&
+    /notice|prior|before|at least|no later than/.test(text);
+  const termBoundary = /end of term|term ends?|expires?|expiration|termination date/.test(text);
+  const terminationNotice =
+    /(terminate|termination|cancel|cancellation).{0,90}(prior notice|written notice|at least|no later than|before)/.test(text) ||
+    /(prior notice|written notice).{0,90}(terminate|termination|cancel|cancellation)/.test(text);
+  return renewalCritical || termBoundary || terminationNotice;
+}
+
+function looksLikeMediumPriorityClause(item) {
+  if (!item.date) return false;
+  const text = `${item.snippet || ""} ${item.notes || ""}`.toLowerCase();
+  const insuranceNotice = /insurance|policy/.test(text) && /notice|cancel|cancellation/.test(text);
+  const paymentDue = item.type === "payment" && /payment due|invoice|fee due|payable/.test(text);
+  const retentionDeadline = /retain|retention|records|audit period/.test(text) && /years?\s+after|after/.test(text);
+  if (insuranceNotice || paymentDue || retentionDeadline) return true;
+  return item.type !== "other" && item.confidence !== "low";
+}
+
+function withPriority(items) {
+  const scored = items.map((item) => {
+    const text = `${item.snippet || ""} ${item.notes || ""}`.toLowerCase();
+    let highScore = 0;
+    if (looksLikeHighPriorityClause(item)) highScore += 4;
+    if (item.type === "renewal" || item.type === "term_end") highScore += 2;
+    if (/non[- ]?renewal|auto[- ]?renew|renewal term/.test(text)) highScore += 2;
+    if (/terminate|termination|cancel|cancellation/.test(text) && /notice|prior|before|at least/.test(text)) highScore += 2;
+    if (item.confidence === "high") highScore += 1;
+    return { ...item, priority: "low", _highScore: highScore };
+  });
+
+  const highCandidates = scored
+    .filter((item) => item._highScore > 0)
+    .sort((a, b) => {
+      if (b._highScore !== a._highScore) return b._highScore - a._highScore;
+      const dateA = a.date || "9999-12-31";
+      const dateB = b.date || "9999-12-31";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return score(b.confidence) - score(a.confidence);
+    });
+
+  const highKeys = new Set();
+  const highSignatures = new Set();
+  for (const candidate of highCandidates) {
+    const signature = `${candidate.type}|${candidate.date || "null"}|${candidate.location || ""}`;
+    if (highSignatures.has(signature)) continue;
+    highSignatures.add(signature);
+    highKeys.add(itemKey(candidate));
+    if (highKeys.size >= 3) break;
+  }
+
+  const prioritized = scored.map((item) => {
+    const key = itemKey(item);
+    if (highKeys.has(key)) return { ...item, priority: "high" };
+    if (looksLikeMediumPriorityClause(item)) return { ...item, priority: "medium" };
+    return item;
+  });
+
+  return prioritized
+    .map(({ _highScore, ...item }) => item)
+    .sort((a, b) => {
+      const priorityDiff = priorityRank(b.priority) - priorityRank(a.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      const dateA = a.date || "9999-12-31";
+      const dateB = b.date || "9999-12-31";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return score(b.confidence) - score(a.confidence);
+    });
+}
+
 export function extractFromSource(rawText, source) {
   const { text, lineStarts } = normalizeText(rawText);
   const sourceLower = String(source || "").toLowerCase();
@@ -625,5 +708,5 @@ export function extractFromSource(rawText, source) {
   let merged = mergeItems(baseline, runAnchorExpansionLayer({ anchors, text, source, locationFor }));
   merged = mergeItems(merged, runSentenceSweepLayer({ text, absolute, anchors, source, locationFor }));
 
-  return rankAndFilter(merged, lockedKeys);
+  return withPriority(rankAndFilter(merged, lockedKeys));
 }
