@@ -56,6 +56,8 @@ type ApiResponse = {
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 const FREE_FILE_MAX_BYTES = 20 * 1024 * 1024;
 const PAID_FILE_MAX_BYTES = 30 * 1024 * 1024;
+const PAID_REDUCTION_TRIGGER_BYTES = 30 * 1024 * 1024;
+const PAID_REDUCTION_MAX_INPUT_BYTES = 40 * 1024 * 1024;
 const INITIAL_RESULTS_VISIBLE = 10;
 const MAX_RESULTS_VISIBLE = 150;
 type PlanId = "free" | "pro_30_day" | "pro_annual" | "pro_lifetime";
@@ -128,6 +130,7 @@ export default function App() {
   const [accessCode, setAccessCode] = useState("");
   const [activePlan, setActivePlan] = useState<PlanId>("free");
   const [oversizedFilesModal, setOversizedFilesModal] = useState<OversizedModalFile[]>([]);
+  const [freeFileLimitModal, setFreeFileLimitModal] = useState(false);
   const [pulseExtract, setPulseExtract] = useState(false);
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -137,6 +140,12 @@ export default function App() {
 
   const isPaidPlan = activePlan !== "free";
   const maxFileBytes = isPaidPlan ? PAID_FILE_MAX_BYTES : FREE_FILE_MAX_BYTES;
+  const willAttemptLargePdfReduction =
+    isPaidPlan &&
+    files.some((file) => {
+      const isPdf = file.name.toLowerCase().endsWith(".pdf");
+      return isPdf && file.size > PAID_REDUCTION_TRIGGER_BYTES && file.size <= PAID_REDUCTION_MAX_INPUT_BYTES;
+    });
 
   useEffect(() => {
     function onResize() {
@@ -260,7 +269,11 @@ export default function App() {
       return;
     }
     if (tooManyFiles) {
-      setError("You can upload up to 3 files.");
+      if (!isPaidPlan) {
+        setFreeFileLimitModal(true);
+      } else {
+        setError("You can upload up to 3 files.");
+      }
       return;
     }
     if (oversized) {
@@ -305,17 +318,35 @@ export default function App() {
 
   function onFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files || []);
-    setFiles(selected);
+    setError(null);
     setOversizedFilesModal([]);
+    setFreeFileLimitModal(false);
+
     if (!isPaidPlan) {
-      const oversizedForFree = selected
-        .filter((file) => file.size > FREE_FILE_MAX_BYTES)
-        .map((file) => ({ name: file.name, sizeMb: bytesToMbLabel(file.size) }));
+      const oversizedForFree = selected.filter((file) => file.size > FREE_FILE_MAX_BYTES);
+      const validForFree = selected.filter((file) => file.size <= FREE_FILE_MAX_BYTES);
+      const cappedForFree = validForFree.slice(0, 1);
+      setFiles(cappedForFree);
+      if (validForFree.length > 1) {
+        setFreeFileLimitModal(true);
+      }
       if (oversizedForFree.length) {
-        setOversizedFilesModal(oversizedForFree);
+        setOversizedFilesModal(
+          oversizedForFree.map((file) => ({ name: file.name, sizeMb: bytesToMbLabel(file.size) }))
+        );
+      }
+      if (!cappedForFree.length) {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+    } else {
+      setFiles(selected);
+      if (!selected.length) {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
     }
-    if (!selected.length) return;
+
     requestAnimationFrame(() => {
       extractButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
@@ -330,6 +361,7 @@ export default function App() {
         pulseTimeoutRef.current = null;
       }, 980);
     }, 260);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function sanitizeFilenameToken(value: string) {
@@ -554,7 +586,7 @@ export default function App() {
           </div>
 
           <div className="extractSectionFiles">
-            <label className="extractSectionLabel">Upload files (PDF, DOCX, TXT | up to 3 files | 20MB free, 30MB paid)</label>
+            <label className="extractSectionLabel">Upload files (PDF, DOCX, TXT | 1 file free, up to 3 paid | 20MB free, 30MB paid)</label>
             <input
               ref={fileInputRef}
               className="extractSectionFileNative"
@@ -609,6 +641,12 @@ export default function App() {
               {loading ? "Extracting" : "Extract Deadlines"}
             </button>
           </div>
+          {loading && willAttemptLargePdfReduction && (
+            <div className="reduceProgress" role="status" aria-live="polite">
+              <span className="reduceProgressSpinner" aria-hidden="true" />
+              <span>Reducing File Size</span>
+            </div>
+          )}
           {error && <p className="err">{error}</p>}
         </section>
 
@@ -643,6 +681,35 @@ export default function App() {
                 </div>
               </div>
               <button type="button" className="sizeOverlayCloseBtn" onClick={() => setOversizedFilesModal([])}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {freeFileLimitModal && (
+          <div className="sizeOverlay" role="dialog" aria-modal="true" aria-labelledby="file-limit-overlay-title">
+            <div className="sizeOverlayCard">
+              <div className="sizeOverlayHead">
+                <h3 id="file-limit-overlay-title">Upload Limit Reached</h3>
+                <button
+                  type="button"
+                  className="sizeOverlayCloseIconBtn"
+                  aria-label="Close"
+                  onClick={() => setFreeFileLimitModal(false)}
+                >
+                  <img src={closeOverlay} alt="" />
+                </button>
+              </div>
+              <div className="sizeOverlayBody">
+                <div className="sizeOverlayIconWrap">
+                  <img src={fileTooBig} alt="" />
+                </div>
+                <div className="sizeOverlayContent">
+                  <p className="sizeOverlayTitle">Free allows up to 1 file per extraction.</p>
+                  <p className="sizeOverlayHint">Paid passes support up to 3 files per extraction.</p>
+                </div>
+              </div>
+              <button type="button" className="sizeOverlayCloseBtn" onClick={() => setFreeFileLimitModal(false)}>
                 Close
               </button>
             </div>
