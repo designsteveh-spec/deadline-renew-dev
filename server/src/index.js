@@ -7,7 +7,7 @@ import pdfParse from "pdf-parse";
 import Stripe from "stripe";
 import { extractFromSource } from "./extractor/extract.js";
 import { attachEntitlements, enforceRunLimits } from "./billing/entitlements.js";
-import { PAID_PLAN_IDS, PLAN_IDS, PLAN_LIMITS, normalizePlanId } from "./billing/plans.js";
+import { PLAN_IDS, PLAN_LIMITS, normalizePlanId } from "./billing/plans.js";
 import {
   createAccessCode,
   defaultExpirationForPlan,
@@ -24,8 +24,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || "");
 const PROMO_CODES = parsePromoCodes(process.env.PROMO_CODES || "");
 const codeBySessionId = new Map();
-const PAID_REDUCTION_TRIGGER_BYTES = 30 * 1024 * 1024;
-const PAID_REDUCTION_MAX_INPUT_BYTES = 40 * 1024 * 1024;
+const MAX_ACCEPTED_INPUT_BYTES = 40 * 1024 * 1024;
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -34,7 +33,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 3,
-    fileSize: PAID_REDUCTION_MAX_INPUT_BYTES
+    fileSize: MAX_ACCEPTED_INPUT_BYTES
   },
   fileFilter: (_req, file, cb) => {
     const ok = [".pdf", ".docx", ".txt"].some((ext) => file.originalname.toLowerCase().endsWith(ext));
@@ -181,15 +180,12 @@ app.post("/api/extract", upload.array("files", 3), attachEntitlements, enforceRu
   }
 
   for (const file of files) {
-    const source = file.originalname;
-    try {
-      const extraction = await extractTextFromFile(file, {
-        planId: req.entitlement?.id || PLAN_IDS.FREE
-      });
-      const extracted = extraction.text;
-      if (file.originalname.toLowerCase().endsWith(".pdf") && extracted.length < 50) {
-        fileReports.push({
-          source,
+      const source = file.originalname;
+      try {
+        const extracted = await extractTextFromFile(file);
+        if (file.originalname.toLowerCase().endsWith(".pdf") && extracted.length < 50) {
+          fileReports.push({
+            source,
           ok: false,
           error:
             "This PDF appears to be image-only (scanned). Please paste text or upload a text-based document.",
@@ -211,8 +207,7 @@ app.post("/api/extract", upload.array("files", 3), attachEntitlements, enforceRu
       fileReports.push({
         source,
         ok: true,
-        chars: extracted.length,
-        error: extraction.optimized ? "Oversized PDF reduced automatically for deterministic extraction." : undefined
+        chars: extracted.length
       });
     } catch (error) {
       fileReports.push({
@@ -249,23 +244,17 @@ app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
 
-async function extractTextFromFile(file, { planId }) {
+async function extractTextFromFile(file) {
   const name = file.originalname.toLowerCase();
-  const isPaidPlan = PAID_PLAN_IDS.includes(planId);
   if (name.endsWith(".txt")) {
-    return { text: file.buffer.toString("utf-8"), optimized: false };
+    return file.buffer.toString("utf-8");
   }
   if (name.endsWith(".docx")) {
     const result = await mammoth.extractRawText({ buffer: file.buffer });
-    return { text: result.value || "", optimized: false };
+    return result.value || "";
   }
   if (name.endsWith(".pdf")) {
-    if (isPaidPlan && file.size > PAID_REDUCTION_TRIGGER_BYTES && file.size <= PAID_REDUCTION_MAX_INPUT_BYTES) {
-      const text = await extractTextFromPdf(file.buffer);
-      return { text, optimized: true };
-    }
-    const text = await extractTextFromPdf(file.buffer);
-    return { text, optimized: false };
+    return extractTextFromPdf(file.buffer);
   }
   throw new Error("Unsupported file type.");
 }

@@ -26,6 +26,7 @@ import priceTier2 from "./assets/icons/PriceTier2.svg";
 import priceTier3 from "./assets/icons/PriceTier3.svg";
 import closeOverlay from "./assets/icons/closeOverlay.svg";
 import fileTooBig from "./assets/icons/file-too-big.svg";
+import bigFile from "./assets/icons/big-file.svg";
 import MailerLiteForm from "./MailerLiteForm";
 
 type ExtractedItem = {
@@ -56,8 +57,8 @@ type ApiResponse = {
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 const FREE_FILE_MAX_BYTES = 20 * 1024 * 1024;
 const PAID_FILE_MAX_BYTES = 30 * 1024 * 1024;
-const PAID_REDUCTION_TRIGGER_BYTES = 30 * 1024 * 1024;
-const PAID_REDUCTION_MAX_INPUT_BYTES = 40 * 1024 * 1024;
+const PAID_LARGE_PDF_TRIGGER_BYTES = 30 * 1024 * 1024;
+const PAID_LARGE_PDF_MAX_BYTES = 40 * 1024 * 1024;
 const INITIAL_RESULTS_VISIBLE = 10;
 const MAX_RESULTS_VISIBLE = 150;
 type PlanId = "free" | "pro_30_day" | "pro_annual" | "pro_lifetime";
@@ -131,6 +132,7 @@ export default function App() {
   const [activePlan, setActivePlan] = useState<PlanId>("free");
   const [oversizedFilesModal, setOversizedFilesModal] = useState<OversizedModalFile[]>([]);
   const [freeFileLimitModal, setFreeFileLimitModal] = useState(false);
+  const [largeFileWaitModal, setLargeFileWaitModal] = useState(false);
   const [pulseExtract, setPulseExtract] = useState(false);
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -140,12 +142,12 @@ export default function App() {
 
   const isPaidPlan = activePlan !== "free";
   const maxFileBytes = isPaidPlan ? PAID_FILE_MAX_BYTES : FREE_FILE_MAX_BYTES;
-  const willAttemptLargePdfReduction =
-    isPaidPlan &&
-    files.some((file) => {
-      const isPdf = file.name.toLowerCase().endsWith(".pdf");
-      return isPdf && file.size > PAID_REDUCTION_TRIGGER_BYTES && file.size <= PAID_REDUCTION_MAX_INPUT_BYTES;
-    });
+  const paidLargePdfFiles = isPaidPlan
+    ? files.filter((file) => {
+        const isPdf = file.name.toLowerCase().endsWith(".pdf");
+        return isPdf && file.size > PAID_LARGE_PDF_TRIGGER_BYTES && file.size <= PAID_LARGE_PDF_MAX_BYTES;
+      })
+    : [];
 
   useEffect(() => {
     function onResize() {
@@ -180,6 +182,9 @@ export default function App() {
   const tooManyFiles = files.length > 3;
   const oversized = !isPaidPlan && files.some((f) => f.size > maxFileBytes);
   const hasInput = files.length > 0 || !!text.trim();
+  const uploadLimitsLabel = isPaidPlan
+    ? "Up to 3 files per extract, up to 30MB a file (PDF, DOCX, TXT)"
+    : "1 file per extract, up to 20MB a file (PDF, DOCX, TXT)";
 
   function bytesToMbLabel(bytes: number) {
     return (bytes / (1024 * 1024)).toFixed(1);
@@ -262,25 +267,13 @@ export default function App() {
     }
   }, [isPaidPlan, oversizedFilesModal.length]);
 
-  async function onExtract() {
-    setError(null);
-    if (!hasInput) {
-      setError("Add pasted text or upload at least one file before extracting.");
-      return;
+  useEffect(() => {
+    if (!paidLargePdfFiles.length && largeFileWaitModal) {
+      setLargeFileWaitModal(false);
     }
-    if (tooManyFiles) {
-      if (!isPaidPlan) {
-        setFreeFileLimitModal(true);
-      } else {
-        setError("You can upload up to 3 files.");
-      }
-      return;
-    }
-    if (oversized) {
-      const mb = Math.floor(maxFileBytes / (1024 * 1024));
-      setError(`Each file must be ${mb}MB or smaller for your current plan.`);
-      return;
-    }
+  }, [paidLargePdfFiles.length, largeFileWaitModal]);
+
+  async function runExtract() {
     setLoading(true);
     try {
       const fd = new FormData();
@@ -316,11 +309,38 @@ export default function App() {
     }
   }
 
+  async function onExtract(skipLargeFileNotice = false) {
+    setError(null);
+    if (!hasInput) {
+      setError("Add pasted text or upload at least one file before extracting.");
+      return;
+    }
+    if (tooManyFiles) {
+      if (!isPaidPlan) {
+        setFreeFileLimitModal(true);
+      } else {
+        setError("You can upload up to 3 files.");
+      }
+      return;
+    }
+    if (oversized) {
+      const mb = Math.floor(maxFileBytes / (1024 * 1024));
+      setError(`Each file must be ${mb}MB or smaller for your current plan.`);
+      return;
+    }
+    if (!skipLargeFileNotice && paidLargePdfFiles.length) {
+      setLargeFileWaitModal(true);
+      return;
+    }
+    await runExtract();
+  }
+
   function onFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files || []);
     setError(null);
     setOversizedFilesModal([]);
     setFreeFileLimitModal(false);
+    setLargeFileWaitModal(false);
 
     if (!isPaidPlan) {
       const oversizedForFree = selected.filter((file) => file.size > FREE_FILE_MAX_BYTES);
@@ -586,7 +606,7 @@ export default function App() {
           </div>
 
           <div className="extractSectionFiles">
-            <label className="extractSectionLabel">Upload files (PDF, DOCX, TXT | 1 file free, up to 3 paid | 20MB free, 30MB paid)</label>
+            <label className="extractSectionLabel">{uploadLimitsLabel}</label>
             <input
               ref={fileInputRef}
               className="extractSectionFileNative"
@@ -607,8 +627,8 @@ export default function App() {
               <div className="extractSectionMeta extractSectionMetaSelected">
                 Selected: {files.length ? files.map((f) => f.name).join(", ") : "No files selected"}
               </div>
-              <div className="reduceToggleWrap" aria-label="Reduce file size status">
-                <span className="reduceToggleLabel">Reduce File Size:</span>
+              <div className="reduceToggleWrap" aria-label="Deep extract status">
+                <span className="reduceToggleLabel">Deep Extract:</span>
                 <div className={`reduceToggleSwitch ${isPaidPlan ? "on" : "off"}`} aria-hidden="true">
                   <span className="reduceToggleText">{isPaidPlan ? "ON" : "OFF"}</span>
                   <span className="reduceToggleKnob" />
@@ -635,16 +655,16 @@ export default function App() {
             <button
               ref={extractButtonRef}
               className={`btn extractSectionSubmit${pulseExtract ? " extractSectionSubmitPulse" : ""}`}
-              onClick={onExtract}
+              onClick={() => void onExtract()}
               disabled={loading || !hasInput}
             >
               {loading ? "Extracting" : "Extract Deadlines"}
             </button>
           </div>
-          {loading && willAttemptLargePdfReduction && (
+          {loading && paidLargePdfFiles.length > 0 && (
             <div className="reduceProgress" role="status" aria-live="polite">
               <span className="reduceProgressSpinner" aria-hidden="true" />
-              <span>Reducing File Size</span>
+              <span>Deep Extract in progress. Large PDFs can take 1-5 minutes.</span>
             </div>
           )}
           {error && <p className="err">{error}</p>}
@@ -677,7 +697,7 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
-                  <p className="sizeOverlayHint">Upgrade to unlock automatic file reduction for oversized PDFs.</p>
+                  <p className="sizeOverlayHint">Paid passes allow up to 30MB per file.</p>
                 </div>
               </div>
               <button type="button" className="sizeOverlayCloseBtn" onClick={() => setOversizedFilesModal([])}>
@@ -710,6 +730,41 @@ export default function App() {
                 </div>
               </div>
               <button type="button" className="sizeOverlayCloseBtn" onClick={() => setFreeFileLimitModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {largeFileWaitModal && (
+          <div className="sizeOverlay" role="dialog" aria-modal="true" aria-labelledby="large-file-wait-overlay-title">
+            <div className="sizeOverlayCard">
+              <div className="sizeOverlayHead">
+                <h3 id="large-file-wait-overlay-title">Large File Notice</h3>
+              </div>
+              <div className="sizeOverlayBody">
+                <div className="sizeOverlayIconWrap">
+                  <img src={bigFile} alt="" />
+                </div>
+                <div className="sizeOverlayContent">
+                  <p className="sizeOverlayTitle">Large PDF detected.</p>
+                  <ul className="sizeOverlayList">
+                    {paidLargePdfFiles.map((file) => (
+                      <li key={`${file.name}-${file.size}`}>
+                        {file.name} = {bytesToMbLabel(file.size)}MB
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="sizeOverlayHint">Extraction may take 1-5 minutes depending on file complexity.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="sizeOverlayCloseBtn"
+                onClick={() => {
+                  setLargeFileWaitModal(false);
+                  void onExtract(true);
+                }}
+              >
                 Close
               </button>
             </div>

@@ -2,8 +2,8 @@ import { PAID_PLAN_IDS, PLAN_LIMITS, normalizePlanId } from "./plans.js";
 import { verifyAccessCode } from "./accessCodes.js";
 
 const usageStore = new Map();
-const PAID_REDUCTION_TRIGGER_BYTES = 30 * 1024 * 1024;
-const PAID_REDUCTION_MAX_INPUT_BYTES = 40 * 1024 * 1024;
+const PAID_LARGE_PDF_TRIGGER_BYTES = 30 * 1024 * 1024;
+const PAID_LARGE_PDF_MAX_BYTES = 40 * 1024 * 1024;
 
 function isPdfFile(file) {
   return String(file?.originalname || "").toLowerCase().endsWith(".pdf");
@@ -62,12 +62,12 @@ export function enforceRunLimits(req, res, next) {
   for (const file of files) {
     if (file.size > limits.maxFileBytes) {
       const isPaidPlan = PAID_PLAN_IDS.includes(limits.id);
-      const canAttemptPaidPdfReduction =
+      const canAllowPaidLargePdf =
         isPaidPlan &&
         isPdfFile(file) &&
-        file.size > PAID_REDUCTION_TRIGGER_BYTES &&
-        file.size <= PAID_REDUCTION_MAX_INPUT_BYTES;
-      if (canAttemptPaidPdfReduction) {
+        file.size > PAID_LARGE_PDF_TRIGGER_BYTES &&
+        file.size <= PAID_LARGE_PDF_MAX_BYTES;
+      if (canAllowPaidLargePdf) {
         continue;
       }
       const mb = Math.floor(limits.maxFileBytes / (1024 * 1024));
