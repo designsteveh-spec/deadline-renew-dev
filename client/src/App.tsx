@@ -64,6 +64,7 @@ const MAX_RESULTS_VISIBLE = 150;
 type PlanId = "free" | "pro_30_day" | "pro_annual" | "pro_lifetime";
 type CheckoutPlan = Exclude<PlanId, "free">;
 type OversizedModalFile = { name: string; sizeMb: string };
+type PurchaseUnlockModal = { plan: PlanId; code: string; emailSent?: boolean };
 const USE_CASE_CARDS = [
   {
     id: "consulting",
@@ -132,6 +133,7 @@ export default function App() {
   const [accessCode, setAccessCode] = useState("");
   const [activePlan, setActivePlan] = useState<PlanId>("free");
   const [checkoutPlanLoading, setCheckoutPlanLoading] = useState<CheckoutPlan | null>(null);
+  const [purchaseUnlockModal, setPurchaseUnlockModal] = useState<PurchaseUnlockModal | null>(null);
   const [oversizedFilesModal, setOversizedFilesModal] = useState<OversizedModalFile[]>([]);
   const [freeFileLimitModal, setFreeFileLimitModal] = useState(false);
   const [largeFileWaitModal, setLargeFileWaitModal] = useState(false);
@@ -193,6 +195,13 @@ export default function App() {
   const deepExtractTooltip = isPaidPlan
     ? undefined
     : "Deep Extract processes larger, more complex\nfiles and is available on upgraded plans.";
+
+  function planLabelFor(plan: PlanId) {
+    if (plan === "pro_lifetime") return "Pro Lifetime Pass";
+    if (plan === "pro_annual") return "Pro Annual Pass";
+    if (plan === "pro_30_day") return "Pro 30-Day Pass";
+    return "Free";
+  }
 
   function bytesToMbLabel(bytes: number) {
     return (bytes / (1024 * 1024)).toFixed(1);
@@ -273,6 +282,11 @@ export default function App() {
         const nextPlan = (data.plan || "free") as PlanId;
         setAccessCode(nextCode);
         setActivePlan(nextPlan);
+        setPurchaseUnlockModal({
+          plan: nextPlan,
+          code: nextCode,
+          emailSent: typeof data?.emailSent === "boolean" ? data.emailSent : undefined
+        });
         setError(null);
         localStorage.setItem("dr_access_code", nextCode);
         const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
@@ -290,6 +304,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isActivatingFromStripe = (params.get("paid") || "").trim() === "1" && !!(params.get("session_id") || "").trim();
+    if (isActivatingFromStripe) return;
     const stored = (localStorage.getItem("dr_access_code") || "").trim();
     if (!stored) return;
     setAccessCode(stored);
@@ -302,14 +319,16 @@ export default function App() {
           body: JSON.stringify({ code: stored })
         });
         const data = await res.json();
-        if (!cancelled && res.ok) {
+        const stillCurrent = (localStorage.getItem("dr_access_code") || "").trim() === stored;
+        if (!cancelled && stillCurrent && res.ok) {
           setActivePlan((data?.plan || "free") as PlanId);
           return;
         }
       } catch {
         // no-op; keep free defaults
       }
-      if (!cancelled) {
+      const stillCurrent = (localStorage.getItem("dr_access_code") || "").trim() === stored;
+      if (!cancelled && stillCurrent) {
         setActivePlan("free");
       }
     };
@@ -834,6 +853,37 @@ export default function App() {
                   void onExtract(true);
                 }}
               >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {purchaseUnlockModal && (
+          <div className="sizeOverlay" role="dialog" aria-modal="true" aria-labelledby="purchase-unlocked-overlay-title">
+            <div className="sizeOverlayCard">
+              <div className="sizeOverlayHead">
+                <h3 id="purchase-unlocked-overlay-title">Pass Activated</h3>
+              </div>
+              <div className="sizeOverlayBody">
+                <div className="sizeOverlayIconWrap">
+                  <img src={priceTier2} alt="" />
+                </div>
+                <div className="sizeOverlayContent">
+                  <p className="sizeOverlayTitle">Your {planLabelFor(purchaseUnlockModal.plan)} is now active.</p>
+                  <p className="sizeOverlayHint">Your access code was auto-filled in the header and is ready to use now.</p>
+                  <ul className="sizeOverlayList">
+                    <li>Access code: {purchaseUnlockModal.code}</li>
+                    <li>
+                      {purchaseUnlockModal.emailSent === true
+                        ? "A purchase email with your access code and instructions has been sent."
+                        : purchaseUnlockModal.emailSent === false
+                          ? "Email could not be sent. You can still use the access code above immediately."
+                          : "If checkout provided an email, a purchase email with access instructions will arrive shortly."}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <button type="button" className="sizeOverlayCloseBtn" onClick={() => setPurchaseUnlockModal(null)}>
                 Close
               </button>
             </div>
