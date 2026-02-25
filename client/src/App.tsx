@@ -583,6 +583,9 @@ export default function App() {
             <a className="siteCta" href="#extract">
               <span className="navBtnLabel">Try Extractor</span>
             </a>
+            <a className="siteCta" href="#pricing">
+              <span className="navBtnLabel">Upgrade</span>
+            </a>
             <div className="navAccess">
               <div className="accesscode-wrap">
                 <input
@@ -617,7 +620,7 @@ export default function App() {
                   Try Extractor
                 </a>
                 <a className="navMenuItem" href="#pricing" onClick={() => setMenuOpen(false)}>
-                  Pricing
+                  Upgrade
                 </a>
                 <a className="navMenuItem" href="#newsletter" onClick={() => setMenuOpen(false)}>
                   Newsletter
