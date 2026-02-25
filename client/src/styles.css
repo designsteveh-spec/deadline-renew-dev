@@ -611,14 +611,14 @@ h1 {
 }
 
 .reduceToggleSwitch {
-  min-width: 96px;
-  height: 40px;
+  min-width: 74px;
+  height: 30px;
   border-radius: 999px;
   border: 3px solid #3f45f3;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 6px;
   font-weight: 700;
   user-select: none;
 }
@@ -630,8 +630,8 @@ h1 {
 }
 
 .reduceToggleSwitch .reduceToggleKnob {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   display: block;
 }
@@ -2091,17 +2091,17 @@ td {
     font-size: 18px;
   }
   .reduceToggleSwitch {
-    min-width: 66px;
+    min-width: 74px;
     height: 30px;
-    border-width: 2px;
+    border-width: 3px;
     padding: 0 6px;
   }
   .reduceToggleSwitch .reduceToggleText {
     font-size: 14px;
   }
   .reduceToggleSwitch .reduceToggleKnob {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
   }
   .sizeOverlayCard {
     width: min(100%, 520px);
