@@ -1608,7 +1608,7 @@ td {
 }
 
 .ttPricingFeatures li::before {
-  content: "\\2713";
+  content: "\2713";
   color: #1e40ff;
   font-weight: 700;
 }
