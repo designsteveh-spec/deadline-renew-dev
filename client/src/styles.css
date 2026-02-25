@@ -808,6 +808,21 @@ h1 {
   font-weight: 700;
 }
 
+.purchaseCodeRow {
+  display: block;
+}
+
+.purchaseCodeLabel {
+  display: block;
+}
+
+.purchaseCodeValue {
+  display: block;
+  max-width: 46ch;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .sizeOverlayCloseBtn {
   display: block;
   margin: 18px auto 20px;

@@ -875,7 +875,10 @@ export default function App() {
                   <p className="sizeOverlayTitle">Your {planLabelFor(purchaseUnlockModal.plan)} is now active.</p>
                   <p className="sizeOverlayHint">Your access code was auto-filled in the header and is ready to use now.</p>
                   <ul className="sizeOverlayList">
-                    <li>Access code: {purchaseUnlockModal.code}</li>
+                    <li className="purchaseCodeRow">
+                      <span className="purchaseCodeLabel">Access code:</span>
+                      <span className="purchaseCodeValue">{purchaseUnlockModal.code}</span>
+                    </li>
                     <li>
                       {purchaseUnlockModal.emailSent === true
                         ? "A purchase email with your access code and instructions has been sent."
