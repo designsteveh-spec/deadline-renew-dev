@@ -134,6 +134,12 @@ const PRIORITY_SCORE = {
   medium: 2,
   low: 1
 };
+const DEADLINE_CONFIDENCE_LABELS = {
+  hard: "Hard deadline",
+  autoRenewal: "Auto-renewal",
+  soft: "Soft / implied",
+  penaltyBacked: "Penalty-backed"
+};
 
 function normalizeSnippet(text) {
   return String(text || "")
@@ -324,6 +330,7 @@ function buildItem({ type, date, confidence, snippet, notes, source, location })
     type,
     date,
     confidence,
+    deadlineConfidence: DEADLINE_CONFIDENCE_LABELS.soft,
     item: TYPE_LABELS[type] || TYPE_LABELS.other,
     snippet: normalizeSnippet(snippet),
     notes,
@@ -665,6 +672,34 @@ function withPriority(items) {
     });
 }
 
+function withDeadlineConfidence(items) {
+  return items.map((item) => {
+    const text = `${item.snippet || ""} ${item.notes || ""}`.toLowerCase();
+    const hasAutoRenewSignal = /auto[- ]?renew|renewal term|non[- ]?renewal|notice of non[- ]?renewal|successive term/.test(text);
+    if (hasAutoRenewSignal) {
+      return { ...item, deadlineConfidence: DEADLINE_CONFIDENCE_LABELS.autoRenewal };
+    }
+
+    const hasPenaltySignal =
+      /(late fee|penalty|penalties|interest|default|breach|liquidated damages|service charge)/.test(text) ||
+      (/(suspend|termination|terminate|cancellation|cancel)/.test(text) && /(non[- ]?payment|failure to pay|past due|overdue)/.test(text));
+    if (hasPenaltySignal) {
+      return { ...item, deadlineConfidence: DEADLINE_CONFIDENCE_LABELS.penaltyBacked };
+    }
+
+    const hasHardDeadlineSignal =
+      !!item.date &&
+      (/(no later than|prior to|at least|not less than|within|before|due|deadline|must|shall|required)/.test(text) ||
+        item.priority === "high" ||
+        (item.type !== "other" && item.confidence !== "low"));
+    if (hasHardDeadlineSignal) {
+      return { ...item, deadlineConfidence: DEADLINE_CONFIDENCE_LABELS.hard };
+    }
+
+    return { ...item, deadlineConfidence: DEADLINE_CONFIDENCE_LABELS.soft };
+  });
+}
+
 export function extractFromSource(rawText, source) {
   const { text, lineStarts } = normalizeText(rawText);
   const sourceLower = String(source || "").toLowerCase();
@@ -708,5 +743,5 @@ export function extractFromSource(rawText, source) {
   let merged = mergeItems(baseline, runAnchorExpansionLayer({ anchors, text, source, locationFor }));
   merged = mergeItems(merged, runSentenceSweepLayer({ text, absolute, anchors, source, locationFor }));
 
-  return withPriority(rankAndFilter(merged, lockedKeys));
+  return withDeadlineConfidence(withPriority(rankAndFilter(merged, lockedKeys)));
 }
