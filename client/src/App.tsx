@@ -642,7 +642,7 @@ export default function App() {
 
   function downloadFormatLabel(value: "csv" | "txt" | "ics") {
     if (value === "txt") return "Text (.txt)";
-    if (value === "ics") return "Calandar (.ics)";
+    if (value === "ics") return "Calendar (.ics)";
     return "Spreadsheet(.csv)";
   }
 
@@ -1399,7 +1399,7 @@ export default function App() {
                         setDownloadMenuOpen(false);
                       }}
                     >
-                      Calandar (.ics)
+                      Calendar (.ics)
                     </button>
                   </div>
                 )}
@@ -1430,7 +1430,7 @@ export default function App() {
                 <th>Source</th>
                 <th>Location</th>
                 <th>Notes</th>
-                <th>+Calandar</th>
+                <th>+Calendar</th>
               </tr>
             </thead>
             <tbody>
