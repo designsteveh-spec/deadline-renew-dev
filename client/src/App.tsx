@@ -27,12 +27,22 @@ import priceTier3 from "./assets/icons/PriceTier3.svg";
 import closeOverlay from "./assets/icons/closeOverlay.svg";
 import fileTooBig from "./assets/icons/file-too-big.svg";
 import bigFile from "./assets/icons/big-file.svg";
+import saveSingleCalendarFile from "./assets/icons/saveSingleCalendarFile.svg";
+import saveSingleGoogleCalendarFile from "./assets/icons/saveSingleGoogleCalendarFile.svg";
 import MailerLiteForm from "./MailerLiteForm";
+import {
+  buildDeadlineIcsFilename,
+  buildGoogleCalendarUrl,
+  buildIcsCalendar,
+  triggerIcsDownload,
+  type CalendarDeadline
+} from "./utils/calendar";
 
 type ExtractedItem = {
   id: string;
   type: "renewal" | "notice" | "payment" | "term_end" | "trial_end" | "other";
   priority?: "high" | "medium" | "low";
+  deadlineConfidence?: "Hard deadline" | "Auto-renewal" | "Soft / implied" | "Penalty-backed";
   date: string | null;
   confidence: "high" | "medium" | "low";
   item: string;
@@ -130,6 +140,8 @@ export default function App() {
     privacy: false
   });
   const [showAllResults, setShowAllResults] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState<"csv" | "txt" | "ics">("csv");
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [activePlan, setActivePlan] = useState<PlanId>("free");
   const [checkoutPlanLoading, setCheckoutPlanLoading] = useState<CheckoutPlan | null>(null);
@@ -144,6 +156,7 @@ export default function App() {
   const extractButtonRef = useRef<HTMLButtonElement | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
   const pulseTimeoutRef = useRef<number | null>(null);
+  const downloadWrapRef = useRef<HTMLDivElement | null>(null);
 
   const isPaidPlan = activePlan !== "free";
   const maxFileBytes = isPaidPlan ? PAID_FILE_MAX_BYTES : FREE_FILE_MAX_BYTES;
@@ -183,6 +196,26 @@ export default function App() {
       document.removeEventListener("mousedown", onDocClick);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setDownloadMenuOpen(false);
+    }
+    function onDocClick(e: MouseEvent) {
+      if (!downloadMenuOpen || !downloadWrapRef.current) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (!downloadWrapRef.current.contains(target)) {
+        setDownloadMenuOpen(false);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onDocClick);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  }, [downloadMenuOpen]);
 
   const tooManyFiles = files.length > 3;
   const oversized = !isPaidPlan && files.some((f) => f.size > maxFileBytes);
@@ -514,13 +547,50 @@ export default function App() {
     return `reminder-sheet.${ext}`;
   }
 
+  function toCalendarDeadline(item: ExtractedItem): CalendarDeadline | null {
+    if (!item.date) return null;
+    const title = String(item.item || "").trim() || "Deadline reminder";
+    return {
+      id: String(item.id || `${title}-${item.date}`),
+      title,
+      dateISO: item.date,
+      notes: item.notes || "",
+      sourceSnippet: item.snippet || ""
+    };
+  }
+
+  function onAddToGoogleCalendar(item: ExtractedItem) {
+    const event = toCalendarDeadline(item);
+    if (!event) return;
+    const url = buildGoogleCalendarUrl(event);
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function onDownloadDeadlineIcs(item: ExtractedItem) {
+    const event = toCalendarDeadline(item);
+    if (!event) return;
+    const ics = buildIcsCalendar([event]);
+    triggerIcsDownload(buildDeadlineIcsFilename(event), ics);
+  }
+
+  function onDownloadAllDeadlinesIcs() {
+    const events = sortedItems
+      .map((item) => toCalendarDeadline(item))
+      .filter((event): event is CalendarDeadline => !!event);
+    if (!events.length) return;
+    const ics = buildIcsCalendar(events);
+    triggerIcsDownload("deadline-all-deadlines.ics", ics);
+  }
+
   function downloadCsv() {
 
     const rows = [
-      ["Item", "Priority", "Date", "Type", "Source Snippet", "Confidence", "Source", "Location", "Notes"],
+      ["Item", "Priority", "Deadline Confidence", "Date", "Type", "Source Snippet", "Confidence", "Source", "Location", "Notes"],
       ...items.map((i) => [
         i.item,
         i.priority || "low",
+        i.deadlineConfidence || "Soft / implied",
         i.date || "",
         i.type,
         i.snippet,
@@ -544,7 +614,7 @@ export default function App() {
   function downloadTxt() {
     const lines = items.map(
       (i) =>
-        `${i.item} | ${i.priority || "low"} | ${i.date || "null"} | ${i.type} | ${i.confidence} | ${i.source} | ${
+        `${i.item} | ${i.priority || "low"} | ${i.deadlineConfidence || "Soft / implied"} | ${i.date || "null"} | ${i.type} | ${i.confidence} | ${i.source} | ${
           i.location || ""
         }\nSnippet: ${
           i.snippet
@@ -556,6 +626,24 @@ export default function App() {
     a.download = buildReminderFilename("txt");
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  function onDownloadSelected() {
+    if (downloadFormat === "csv") {
+      downloadCsv();
+      return;
+    }
+    if (downloadFormat === "txt") {
+      downloadTxt();
+      return;
+    }
+    onDownloadAllDeadlinesIcs();
+  }
+
+  function downloadFormatLabel(value: "csv" | "txt" | "ics") {
+    if (value === "txt") return "Text (.txt)";
+    if (value === "ics") return "Calandar (.ics)";
+    return "Spreadsheet(.csv)";
   }
 
   const sortedItems = useMemo(
@@ -583,6 +671,8 @@ export default function App() {
   const hasExpandableResults = sortedItems.length > INITIAL_RESULTS_VISIBLE;
   const cappedResults = showAllResults ? sortedItems.slice(0, MAX_RESULTS_VISIBLE) : sortedItems.slice(0, INITIAL_RESULTS_VISIBLE);
   const hasOverflowBeyondCap = sortedItems.length > MAX_RESULTS_VISIBLE;
+  const datedItemCount = sortedItems.filter((item) => !!item.date).length;
+  const canDownloadSelected = downloadFormat === "ics" ? datedItemCount > 0 : items.length > 0;
 
   return (
     <>
@@ -732,7 +822,11 @@ export default function App() {
               <div className="extractSectionMeta extractSectionMetaSelected">
                 Selected: {files.length ? files.map((f) => f.name).join(", ") : "No files selected"}
               </div>
-              <div className="reduceToggleWrap" aria-label="Deep extract status" title={deepExtractTooltip}>
+              <div
+                className="reduceToggleWrap"
+                aria-label="Deep extract status"
+                data-tooltip={deepExtractTooltip || undefined}
+              >
                 <span className="reduceToggleLabel">Deep Extract:</span>
                 <div className={`reduceToggleSwitch ${isPaidPlan ? "on" : "off"}`} aria-hidden="true">
                   <span className="reduceToggleText">{isPaidPlan ? "ON" : "OFF"}</span>
@@ -1264,11 +1358,61 @@ export default function App() {
         <div className="row">
           <h2>Reminder Sheet</h2>
           <div className="actions">
-            <button id="download-csv-btn" onClick={downloadCsv} disabled={!items.length}>
-              Download CSV
-            </button>
-            <button onClick={downloadTxt} disabled={!items.length}>
-              Download TXT
+            <div className="downloadPicker">
+              <div className="downloadDropdown" ref={downloadWrapRef}>
+                <button
+                  type="button"
+                  className="downloadFormatSelect"
+                  aria-haspopup="listbox"
+                  aria-expanded={downloadMenuOpen}
+                  onClick={() => setDownloadMenuOpen((prev) => !prev)}
+                >
+                  <span>{downloadFormatLabel(downloadFormat)}</span>
+                </button>
+                {downloadMenuOpen && (
+                  <div className="downloadMenu" role="listbox" aria-label="Choose download format">
+                    <button
+                      type="button"
+                      className={`downloadMenuItem ${downloadFormat === "csv" ? "active" : ""}`}
+                      onClick={() => {
+                        setDownloadFormat("csv");
+                        setDownloadMenuOpen(false);
+                      }}
+                    >
+                      Spreadsheet(.csv)
+                    </button>
+                    <button
+                      type="button"
+                      className={`downloadMenuItem ${downloadFormat === "txt" ? "active" : ""}`}
+                      onClick={() => {
+                        setDownloadFormat("txt");
+                        setDownloadMenuOpen(false);
+                      }}
+                    >
+                      Text (.txt)
+                    </button>
+                    <button
+                      type="button"
+                      className={`downloadMenuItem ${downloadFormat === "ics" ? "active" : ""}`}
+                      onClick={() => {
+                        setDownloadFormat("ics");
+                        setDownloadMenuOpen(false);
+                      }}
+                    >
+                      Calandar (.ics)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              id="download-csv-btn"
+              type="button"
+              className="downloadExecBtn"
+              onClick={onDownloadSelected}
+              disabled={!canDownloadSelected}
+            >
+              Download
             </button>
           </div>
         </div>
@@ -1278,6 +1422,7 @@ export default function App() {
               <tr>
                 <th>Item</th>
                 <th>Priority</th>
+                <th>Deadline Confidence</th>
                 <th>Date</th>
                 <th>Type</th>
                 <th>Source Snippet</th>
@@ -1285,12 +1430,13 @@ export default function App() {
                 <th>Source</th>
                 <th>Location</th>
                 <th>Notes</th>
+                <th>+Calandar</th>
               </tr>
             </thead>
             <tbody>
               {!sortedItems.length && (
                 <tr>
-                  <td colSpan={9} className="muted">
+                  <td colSpan={11} className="muted">
                     No results yet.
                   </td>
                 </tr>
@@ -1299,6 +1445,7 @@ export default function App() {
                 <tr key={i.id}>
                   <td>{i.item}</td>
                   <td>{i.priority || "low"}</td>
+                  <td>{i.deadlineConfidence || "Soft / implied"}</td>
                   <td>{i.date || "null"}</td>
                   <td>{i.type}</td>
                   <td>{i.snippet}</td>
@@ -1306,6 +1453,30 @@ export default function App() {
                   <td>{i.source}</td>
                   <td>{i.location || ""}</td>
                   <td>{i.notes || ""}</td>
+                  <td className="calendarActionCell">
+                    <div className="calendarIconStack">
+                      <button
+                        type="button"
+                        className="calendarIconBtn"
+                        onClick={() => onAddToGoogleCalendar(i)}
+                        disabled={!i.date}
+                        data-tooltip="Add this row date to Google Calendar"
+                        aria-label="Add this row date to Google Calendar"
+                      >
+                        <img src={saveSingleGoogleCalendarFile} alt="" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="calendarIconBtn"
+                        onClick={() => onDownloadDeadlineIcs(i)}
+                        disabled={!i.date}
+                        data-tooltip="Save this row as a single .ics calendar file"
+                        aria-label="Save this row as a single .ics calendar file"
+                      >
+                        <img src={saveSingleCalendarFile} alt="" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

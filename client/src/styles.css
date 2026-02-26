@@ -600,6 +600,7 @@ h1 {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  position: relative;
 }
 
 .reduceToggleLabel {
@@ -1017,10 +1018,237 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.downloadPicker {
+  position: relative;
+  width: 276px;
+  max-width: 100%;
+}
+
+.downloadDropdown {
+  position: relative;
+}
+
+.downloadDropdown::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #9ca3af;
+  border-bottom: 2px solid #9ca3af;
+  transform: translateY(-62%) rotate(45deg);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.downloadFormatSelect {
+  width: 100%;
+  height: 38px;
+  border-radius: 999px;
+  border: 1.5px solid #c7ccd6;
+  background: #f8fafc;
+  color: #555;
+  font-size: 31px;
+  font-size: clamp(14px, 0.95vw, 20px);
+  font-weight: 500;
+  padding: 0 42px 0 16px;
+  outline: none;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.downloadFormatSelect:focus {
+  border-color: #90a0ba;
+}
+
+.downloadMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  border: 1.5px solid #c7ccd6;
+  border-radius: 18px;
+  background: #f8fafc;
+  overflow: hidden;
+  z-index: 20;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+
+.downloadMenuItem {
+  display: block;
+  width: 100%;
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid #e2e8f0;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.downloadMenuItem:first-child {
+  border-top: 0;
+}
+
+.downloadMenuItem:hover {
+  background: #eef2ff;
+}
+
+.downloadMenuItem.active {
+  background: #e6ecff;
+  color: #1e40ff;
+}
+
+.downloadExecBtn {
+  margin-top: 0;
+  min-height: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  background: #2f50ff;
+  color: #ffffff;
+  font-size: 30px;
+  font-size: clamp(14px, 0.95vw, 20px);
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 22px;
+}
+
+.downloadExecBtn:hover {
+  background: #2946e5;
 }
 
 .tableWrap {
   overflow-x: auto;
+  overflow-y: visible;
+  position: relative;
+}
+
+.calendarActionCell {
+  min-width: 86px;
+}
+
+.calendarIconStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.calendarIconBtn {
+  margin-top: 0;
+  width: 34px;
+  height: 34px;
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid #cfd8ea;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.calendarIconBtn img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.calendarIconBtn:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #9db0ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(30, 64, 255, 0.16);
+}
+
+.calendarIconBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.calendarIconBtn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  transform: none;
+  background: #fff8c5;
+  color: #0f172a;
+  border: 1px solid #d8c974;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 90ms ease 20ms,
+    visibility 0ms linear 110ms;
+  z-index: 25;
+}
+
+.calendarIconBtn[data-tooltip]:hover:not(:disabled)::after,
+.calendarIconBtn[data-tooltip]:focus-visible:not(:disabled)::after {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 90ms ease 0ms,
+    visibility 0ms linear 0ms;
+}
+
+.reduceToggleWrap[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  transform: none;
+  background: #fff8c5;
+  color: #0f172a;
+  border: 1px solid #d8c974;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: normal;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 90ms ease 20ms,
+    visibility 0ms linear 110ms;
+  z-index: 25;
+}
+
+.reduceToggleWrap[data-tooltip]:hover::after,
+.reduceToggleWrap[data-tooltip]:focus-within::after {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 90ms ease 0ms,
+    visibility 0ms linear 0ms;
 }
 
 .resultsAccordionWrap {
@@ -2193,6 +2421,13 @@ td {
   .row {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .actions {
+    width: 100%;
+  }
+  .downloadPicker {
+    width: 100%;
+    max-width: 420px;
   }
   .valueGrid,
   .planGrid {
