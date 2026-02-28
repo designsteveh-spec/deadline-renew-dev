@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://deadline-renew-frontend-staging.onrender.com/sitemap.xml

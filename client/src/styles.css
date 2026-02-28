@@ -2275,6 +2275,134 @@ td {
   font-size: clamp(12px, 0.95vw, 16px);
 }
 
+.blogPage {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 28px 24px 70px;
+}
+
+.blogShell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.blogShell .blogPage {
+  flex: 1 0 auto;
+}
+
+.blogShell .siteFooter {
+  margin-top: auto;
+}
+
+.blogHero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(30px, 2.2vw, 44px);
+}
+
+.blogHero p {
+  margin: 0;
+  color: #475569;
+  font-size: 17px;
+  line-height: 1.5;
+  max-width: 860px;
+}
+
+.blogList {
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.blogCard {
+  border: 1px solid #d9e2ec;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 16px 18px;
+}
+
+.blogCard h2 {
+  margin: 0 0 8px;
+  font-size: clamp(20px, 1.4vw, 28px);
+}
+
+.blogCard h2 a {
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.blogCard h2 a:hover {
+  color: #1e40ff;
+}
+
+.blogCard p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.blogMeta {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.blogPost {
+  border: 1px solid #d9e2ec;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 18px 20px;
+}
+
+.blogBack {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #1e40ff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.blogPost h1 {
+  margin: 0 0 10px;
+}
+
+.blogPost p {
+  margin: 0 0 14px;
+  color: #334155;
+  line-height: 1.7;
+}
+
+.blogPost a {
+  color: #1e40ff;
+}
+
+.blogImage {
+  margin: 18px 0;
+}
+
+.blogImage img {
+  width: 100%;
+  border-radius: 12px;
+  display: block;
+}
+
+.blogImage figcaption {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.blogSection {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.blogSection h2 {
+  margin: 0 0 10px;
+  font-size: clamp(22px, 1.5vw, 30px);
+}
+
 @media (max-width: 768px) {
   .siteHeaderInner {
     padding: 12px 14px;
@@ -2456,6 +2584,12 @@ td {
     padding: 36px 14px 18px;
     grid-template-columns: 1fr;
     gap: 24px;
+  }
+  .blogPage {
+    padding: 20px 14px 52px;
+  }
+  .blogPost {
+    padding: 14px 14px;
   }
   .footerBottom {
     padding: 0 14px 22px;
