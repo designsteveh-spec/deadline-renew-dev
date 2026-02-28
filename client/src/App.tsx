@@ -726,6 +726,9 @@ export default function App() {
                 <a className="navMenuItem" href="#pricing" onClick={() => setMenuOpen(false)}>
                   Upgrade
                 </a>
+                <a className="navMenuItem" href="/blog" onClick={() => setMenuOpen(false)}>
+                  Blog
+                </a>
                 <a className="navMenuItem" href="#newsletter" onClick={() => setMenuOpen(false)}>
                   Newsletter
                 </a>
@@ -1652,6 +1655,7 @@ export default function App() {
           </div>
           <div className="footerCol footerLinksCol">
             <a href="/">Home</a>
+            <a href="/blog">Blog</a>
             <a href="#extract">Run Extraction</a>
             <a href="#pricing">Upgrade</a>
             <a href="https://trusted-tools.com/" target="_blank" rel="noreferrer">
